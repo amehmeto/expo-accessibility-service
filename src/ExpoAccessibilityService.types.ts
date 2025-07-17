@@ -1,1 +1,1 @@
-export type ExpoAccessibilityServiceModuleEvents = {};
+export type ExpoAccessibilityServiceModuleEvents = Record<string, never>;
