@@ -9,5 +9,5 @@ declare class ExpoAccessibilityServiceModule extends NativeModule<ExpoAccessibil
 
 // This call loads the native module object from the JSI.
 export default requireNativeModule<ExpoAccessibilityServiceModule>(
-  "ExpoAccessibilityService"
+  "ExpoAccessibilityService",
 );
