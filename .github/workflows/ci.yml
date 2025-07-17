@@ -2,13 +2,14 @@ name: CI
 
 on:
   push:
+    branches: [main, develop]
   pull_request:
 
 jobs:
   typescript:
     name: TypeScript & JavaScript
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,7 +43,7 @@ jobs:
   android:
     name: Android & Kotlin
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
