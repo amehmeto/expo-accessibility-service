@@ -77,6 +77,10 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Install example dependencies
+        working-directory: ./example
+        run: npm ci
+
       - name: Build Android module
         working-directory: ./example/android
         run: ./gradlew :expo-accessibility-service:build
@@ -89,6 +93,6 @@ jobs:
         working-directory: ./example/android
         run: ./gradlew :expo-accessibility-service:compileDebugKotlin
 
-      - name: Build example Android app
+      - name: Build example Android app (APK)
         working-directory: ./example/android
         run: ./gradlew assembleDebug
