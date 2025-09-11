@@ -8,8 +8,14 @@ import android.content.Context
 import android.provider.Settings
 import android.text.TextUtils
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.accessibilityservice.AccessibilityService
 
 class ExpoAccessibilityServiceModule : Module() {
+  
+  // Configurable service class name - can be set by the app
+  private var serviceClassName: String? = null
 
   override fun definition() = ModuleDefinition {
     Name("ExpoAccessibilityService")
@@ -22,14 +28,23 @@ class ExpoAccessibilityServiceModule : Module() {
     AsyncFunction("askPermission") { promise: Promise ->
       openAccessibilitySettings(promise)
     }
+
+    AsyncFunction("setServiceClassName") { className: String, promise: Promise ->
+      serviceClassName = className
+      promise.resolve()
+    }
+
+    AsyncFunction("getDetectedServices") { promise: Promise ->
+      val services = getAccessibilityServicesFromManifest()
+      promise.resolve(services)
+    }
   }
 
   private val context
   get() = requireNotNull(appContext.reactContext)
 
   private fun isAccessibilityServiceEnabled(): Boolean {
-    val packageName = context.packageName
-    val serviceName = "$packageName/${packageName}.MyAccessibilityService"
+    val serviceNames = getServiceNamesToCheck()
     
     val enabledServices = Settings.Secure.getString(
       context.contentResolver,
@@ -39,7 +54,55 @@ class ExpoAccessibilityServiceModule : Module() {
     return if (TextUtils.isEmpty(enabledServices)) {
       false
     } else {
-      enabledServices.contains(serviceName)
+      serviceNames.any { serviceName ->
+        enabledServices.contains(serviceName)
+      }
+    }
+  }
+
+  private fun getServiceNamesToCheck(): List<String> {
+    val packageName = context.packageName
+    
+    return when {
+      // 1. If service class name is explicitly configured, use it
+      serviceClassName != null -> {
+        listOf("$packageName/$serviceClassName")
+      }
+      // 2. Try to auto-detect accessibility services from manifest
+      else -> {
+        val detectedServices = getAccessibilityServicesFromManifest()
+        if (detectedServices.isNotEmpty()) {
+          detectedServices.map { "$packageName/$it" }
+        } else {
+          // 3. Fall back to default for backward compatibility
+          listOf("$packageName/${packageName}.MyAccessibilityService")
+        }
+      }
+    }
+  }
+
+  private fun getAccessibilityServicesFromManifest(): List<String> {
+    return try {
+      val packageManager = context.packageManager
+      val packageName = context.packageName
+      val packageInfo = packageManager.getPackageInfo(packageName, PackageManager.GET_SERVICES)
+      
+      packageInfo.services?.filter { serviceInfo ->
+        isAccessibilityService(serviceInfo)
+      }?.map { serviceInfo ->
+        serviceInfo.name
+      } ?: emptyList()
+    } catch (e: Exception) {
+      emptyList()
+    }
+  }
+
+  private fun isAccessibilityService(serviceInfo: ServiceInfo): Boolean {
+    return try {
+      // Check if service has accessibility service permission
+      serviceInfo.permission == "android.permission.BIND_ACCESSIBILITY_SERVICE"
+    } catch (e: Exception) {
+      false
     }
   }
 
