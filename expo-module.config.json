@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["ExpoAccessibilityServiceModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.accessibilityservice.ExpoAccessibilityServiceModule"]
+  }
+}
