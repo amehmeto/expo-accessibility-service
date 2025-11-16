@@ -154,6 +154,25 @@ cd example
 npx expo run:android
 ```
 
+### Troubleshooting
+
+#### Android Build Fails with Dependency Resolution Errors
+
+If you encounter build errors like "Could not resolve project :react-native-edge-to-edge" or similar dependency resolution failures, regenerate the Android native project:
+
+```bash
+cd example
+npx expo prebuild --clean --platform android
+npx expo run:android
+```
+
+**Why this happens:**
+- The Android Gradle configuration may become out of sync with Expo's autolinking
+- Dependencies introduced by Expo SDK updates may not be properly configured
+- Running `prebuild --clean` regenerates all native Android files with the correct configuration
+
+**Note:** The first build after running `prebuild --clean` may take longer as it compiles all native dependencies from scratch.
+
 ### Testing
 
 ```bash
@@ -167,16 +186,6 @@ npm test
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
-## License
-
-MIT © [Ram Suthar](https://github.com/reallyram)
-
-## Support
-
-- 📧 Email: reallyram@gmail.com
-- 🐛 Issues: [GitHub Issues](https://github.com/reallyram/expo-accessibility-service/issues)
-- 📖 Documentation: [GitHub Repository](https://github.com/reallyram/expo-accessibility-service)
 
 ## Related
 
