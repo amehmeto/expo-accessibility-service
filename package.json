@@ -21,13 +21,13 @@
     "expo-accessibility-service",
     "ExpoAccessibilityService"
   ],
-  "repository": "https://github.com/reallyram/expo-accessibility-service",
+  "repository": "https://github.com/amehmeto/expo-accessibility-service",
   "bugs": {
-    "url": "https://github.com/reallyram/expo-accessibility-service/issues"
+    "url": "https://github.com/amehmeto/expo-accessibility-service/issues"
   },
-  "author": "Ram Suthar <reallyram@gmail.com> (https://github.com/reallyram)",
+  "author": "amehmeto",
   "license": "MIT",
-  "homepage": "https://github.com/reallyram/expo-accessibility-service#readme",
+  "homepage": "https://github.com/amehmeto/expo-accessibility-service#readme",
   "devDependencies": {
     "@swc/jest": "^0.2.39",
     "@types/jest": "^30.0.0",

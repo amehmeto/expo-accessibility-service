@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
     :tvos => '15.1'
   }
   s.swift_version  = '5.4'
-  s.source         = { git: 'https://github.com/reallyram/expo-accessibility-service' }
+  s.source         = { git: 'https://github.com/amehmeto/expo-accessibility-service' }
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
