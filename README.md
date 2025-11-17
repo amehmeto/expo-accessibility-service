@@ -1,11 +1,14 @@
 # Expo Accessibility Service
 
-An Expo module for managing Android accessibility service permissions and status. This module provides a simple way to check if accessibility services are enabled and request permissions from users.
+An Expo module for managing Android accessibility service permissions and monitoring foreground app changes. This module provides a simple way to check if accessibility services are enabled, request permissions from users, and receive real-time events when users switch between apps.
 
 ## Features
 
 - ✅ Check if accessibility service is enabled
 - ✅ Request accessibility service permissions
+- ✅ Monitor foreground app changes in real-time
+- ✅ Event-based architecture with subscription management
+- ✅ Support for multiple simultaneous listeners
 - ✅ Cross-platform support (Android only)
 - ✅ TypeScript support
 - ✅ Expo SDK 53+ compatible
@@ -29,6 +32,8 @@ Add the module to your `app.json` or `app.config.js`:
 ```
 
 ## Usage
+
+### Basic Permission Checking
 
 ```typescript
 import * as AccessibilityService from 'expo-accessibility-service';
@@ -70,6 +75,50 @@ export default function App() {
 }
 ```
 
+### Monitoring Foreground App Changes
+
+```typescript
+import * as AccessibilityService from 'expo-accessibility-service';
+import type { AccessibilityEvent } from 'expo-accessibility-service';
+import { useEffect, useState, useRef } from 'react';
+import { Button, Text, View, ScrollView } from 'react-native';
+
+export default function App() {
+  const [events, setEvents] = useState<AccessibilityEvent[]>([]);
+  const subscriptionRef = useRef(null);
+
+  useEffect(() => {
+    // Start monitoring
+    const subscription = AccessibilityService.addAccessibilityEventListener(
+      (event: AccessibilityEvent) => {
+        console.log('App changed:', event.packageName);
+        setEvents((prev) => [event, ...prev].slice(0, 10)); // Keep last 10 events
+      }
+    );
+
+    subscriptionRef.current = subscription;
+
+    // Cleanup on unmount
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  return (
+    <ScrollView>
+      <Text>Recent App Changes:</Text>
+      {events.map((event, index) => (
+        <View key={`${event.timestamp}-${index}`}>
+          <Text>App: {event.packageName}</Text>
+          <Text>Class: {event.className}</Text>
+          <Text>Time: {new Date(event.timestamp).toLocaleTimeString()}</Text>
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+```
+
 ## API Reference
 
 ### `isEnabled(): Promise<boolean>`
@@ -96,6 +145,89 @@ Opens the device's accessibility settings page where users can enable the access
 ```typescript
 await AccessibilityService.askPermission();
 // User will be taken to accessibility settings
+```
+
+### `addAccessibilityEventListener(listener: (event: AccessibilityEvent) => void): AccessibilityEventSubscription`
+
+Registers a listener for foreground app change events. The listener will be called whenever a new app comes to the foreground.
+
+**Parameters:**
+- `listener`: A callback function that receives `AccessibilityEvent` objects
+
+**Returns:** An `AccessibilityEventSubscription` object with a `remove()` method to unsubscribe
+
+**Example:**
+
+```typescript
+const subscription = AccessibilityService.addAccessibilityEventListener(
+  (event) => {
+    console.log('App changed:', event.packageName);
+    console.log('Activity:', event.className);
+    console.log('Timestamp:', event.timestamp);
+  }
+);
+
+// Later, to stop listening:
+subscription.remove();
+```
+
+**Important Notes:**
+- Supports multiple simultaneous listeners
+- Events are delivered with sub-100ms latency
+- The service continues running when the JS app is backgrounded
+- Properly handles permission revocation
+- Always call `subscription.remove()` when done to prevent memory leaks
+
+### `setServiceClassName(className: string): Promise<void>`
+
+Configure the accessibility service class name to check for. This allows using custom service class names instead of the default "MyAccessibilityService".
+
+**Parameters:**
+- `className`: The fully qualified class name (e.g., "com.example.MyCustomAccessibilityService")
+
+**Returns:** A promise that resolves when the configuration is set
+
+**Example:**
+
+```typescript
+await AccessibilityService.setServiceClassName('com.myapp.CustomAccessibilityService');
+```
+
+### `getDetectedServices(): Promise<string[]>`
+
+Get a list of accessibility services detected in the app's manifest. This can help identify available services for configuration.
+
+**Returns:** A promise that resolves to an array of service class names
+
+**Example:**
+
+```typescript
+const services = await AccessibilityService.getDetectedServices();
+console.log('Available services:', services);
+```
+
+## Types
+
+### `AccessibilityEvent`
+
+Event object emitted when a foreground app change is detected.
+
+```typescript
+type AccessibilityEvent = {
+  packageName: string;  // The package name of the app (e.g., "com.android.chrome")
+  className: string;    // The activity/window class name
+  timestamp: number;    // Unix timestamp in milliseconds
+};
+```
+
+### `AccessibilityEventSubscription`
+
+Subscription object returned by `addAccessibilityEventListener()`.
+
+```typescript
+type AccessibilityEventSubscription = {
+  remove: () => void;  // Call this to unsubscribe from events
+};
 ```
 
 ## Platform Support

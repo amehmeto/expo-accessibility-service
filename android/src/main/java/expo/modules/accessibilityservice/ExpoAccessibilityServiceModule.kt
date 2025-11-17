@@ -11,14 +11,34 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.accessibilityservice.AccessibilityService
+import android.util.Log
 
-class ExpoAccessibilityServiceModule : Module() {
-  
+class ExpoAccessibilityServiceModule : Module(), MyAccessibilityService.EventListener {
+
   // Configurable service class name - can be set by the app
   private var serviceClassName: String? = null
 
+  companion object {
+    private const val TAG = "ExpoAccessibilityModule"
+  }
+
   override fun definition() = ModuleDefinition {
     Name("ExpoAccessibilityService")
+
+    // Define events that can be emitted to JavaScript
+    Events("onAccessibilityEvent")
+
+    // Register this module as the event listener when module is created
+    OnCreate {
+      Log.d(TAG, "Module created, registering as event listener")
+      MyAccessibilityService.setEventListener(this@ExpoAccessibilityServiceModule)
+    }
+
+    // Unregister when module is destroyed to avoid memory leaks
+    OnDestroy {
+      Log.d(TAG, "Module destroyed, unregistering event listener")
+      MyAccessibilityService.setEventListener(null)
+    }
 
     AsyncFunction("isEnabled") { promise: Promise ->
       val isEnabled = isAccessibilityServiceEnabled()
@@ -37,6 +57,25 @@ class ExpoAccessibilityServiceModule : Module() {
     AsyncFunction("getDetectedServices") { promise: Promise ->
       val services = getAccessibilityServicesFromManifest()
       promise.resolve(services)
+    }
+  }
+
+  // Implement EventListener interface
+  override fun onAppChanged(packageName: String, className: String, timestamp: Long) {
+    try {
+      // Create event data map
+      val eventData = mapOf(
+        "packageName" to packageName,
+        "className" to className,
+        "timestamp" to timestamp
+      )
+
+      Log.d(TAG, "Emitting accessibility event: $eventData")
+
+      // Emit event to JavaScript
+      sendEvent("onAccessibilityEvent", eventData)
+    } catch (e: Exception) {
+      Log.e(TAG, "Error emitting accessibility event", e)
     }
   }
 
