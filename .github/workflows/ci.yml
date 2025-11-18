@@ -82,15 +82,15 @@ jobs:
 
       - name: Build Android module
         working-directory: ./example/android
-        run: ./gradlew :expo-accessibility-service:build
+        run: ./gradlew :amehmeto-expo-accessibility-service:build
 
       - name: Run Kotlin lint (detekt)
         working-directory: ./example/android
-        run: ./gradlew :expo-accessibility-service:detekt || echo "Detekt not configured, skipping"
+        run: ./gradlew :amehmeto-expo-accessibility-service:detekt || echo "Detekt not configured, skipping"
 
       - name: Compile Kotlin sources
         working-directory: ./example/android
-        run: ./gradlew :expo-accessibility-service:compileDebugKotlin
+        run: ./gradlew :amehmeto-expo-accessibility-service:compileDebugKotlin
 
       - name: Build example Android app (APK)
         working-directory: ./example/android
