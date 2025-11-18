@@ -57,7 +57,7 @@ export class AndroidAccessibilityTestHelper {
    */
   setEnabledServices(
     includeOurService = true,
-    additionalServices: string[] = [],
+    additionalServices: string[] = []
   ): void {
     const services: string[] = [...additionalServices]
 
@@ -132,7 +132,7 @@ export class AndroidAccessibilityTestHelper {
   verifyServiceDetectionCall(): void {
     expect(this.mockSettings.Secure.getString).toHaveBeenCalledWith(
       this.mockContext.contentResolver,
-      this.mockSettings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+      this.mockSettings.Secure.ENABLED_ACCESSIBILITY_SERVICES
     )
   }
 
@@ -148,7 +148,7 @@ export class AndroidAccessibilityTestHelper {
  * Create a mock implementation that simulates the Android native module behavior
  */
 export function createAndroidNativeMock(
-  helper: AndroidAccessibilityTestHelper,
+  helper: AndroidAccessibilityTestHelper
 ) {
   return {
     isEnabled: jest.fn().mockImplementation(async () => {
@@ -157,7 +157,7 @@ export function createAndroidNativeMock(
 
       const enabledServices = helper.settings.Secure.getString(
         helper.context.contentResolver,
-        helper.settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        helper.settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
       )
 
       if (!enabledServices || enabledServices === '') {
@@ -175,7 +175,7 @@ export function createAndroidNativeMock(
         return undefined
       } catch (error) {
         throw new Error(
-          `Could not open accessibility settings: ${(error as Error).message}`,
+          `Could not open accessibility settings: ${(error as Error).message}`
         )
       }
     }),

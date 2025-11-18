@@ -41,7 +41,7 @@ describe('Android Accessibility Service Integration Tests', () => {
 
       const enabledServices = mockSettings.Secure.getString(
         mockContext.contentResolver,
-        mockSettings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        mockSettings.Secure.ENABLED_ACCESSIBILITY_SERVICES
       )
 
       if (!enabledServices || enabledServices === '') {
@@ -59,7 +59,7 @@ describe('Android Accessibility Service Integration Tests', () => {
         return undefined
       } catch (error) {
         throw new Error(
-          `Could not open accessibility settings: ${(error as Error).message}`,
+          `Could not open accessibility settings: ${(error as Error).message}`
         )
       }
     })
@@ -75,7 +75,7 @@ describe('Android Accessibility Service Integration Tests', () => {
       expect(result).toBe(false)
       expect(mockSettings.Secure.getString).toHaveBeenCalledWith(
         mockContext.contentResolver,
-        mockSettings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        mockSettings.Secure.ENABLED_ACCESSIBILITY_SERVICES
       )
     })
 
@@ -169,7 +169,7 @@ describe('Android Accessibility Service Integration Tests', () => {
       })
 
       await expect(askPermission()).rejects.toThrow(
-        'Could not open accessibility settings: Intent creation failed',
+        'Could not open accessibility settings: Intent creation failed'
       )
     })
 
@@ -182,7 +182,7 @@ describe('Android Accessibility Service Integration Tests', () => {
       })
 
       await expect(askPermission()).rejects.toThrow(
-        'Could not open accessibility settings: Activity not found',
+        'Could not open accessibility settings: Activity not found'
       )
     })
 
@@ -195,7 +195,7 @@ describe('Android Accessibility Service Integration Tests', () => {
       })
 
       await expect(askPermission()).rejects.toThrow(
-        'Could not open accessibility settings: Permission denied',
+        'Could not open accessibility settings: Permission denied'
       )
     })
   })
@@ -258,7 +258,7 @@ describe('Android Accessibility Service Integration Tests', () => {
 
       // User disables the service (simulated)
       mockSettings.Secure.getString.mockReturnValue(
-        'com.other.service/.OtherService',
+        'com.other.service/.OtherService'
       )
 
       // Service is now disabled
@@ -283,7 +283,7 @@ describe('Android Accessibility Service Integration Tests', () => {
         Array.from(
           { length: 50 },
           (_, i) =>
-            `com.example.service${i}/com.example.service${i}.AccessibilityService`,
+            `com.example.service${i}/com.example.service${i}.AccessibilityService`
         ).join(':') +
         ':com.example.testaccessibility/com.example.testaccessibility.MyAccessibilityService'
 

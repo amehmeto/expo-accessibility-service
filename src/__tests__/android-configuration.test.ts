@@ -30,7 +30,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
       async (className: string) => {
         configuredServiceClassName = className
         return undefined
-      },
+      }
     )
 
     mockModule.getDetectedServices.mockImplementation(async () => {
@@ -47,7 +47,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
       } else if (detectedServices.length > 0) {
         // Use auto-detected services
         serviceNamesToCheck = detectedServices.map(
-          (service) => `${packageName}/${service}`,
+          (service) => `${packageName}/${service}`
         )
       } else {
         // Fall back to default
@@ -58,7 +58,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
 
       const enabledServices = helper.settings.Secure.getString(
         helper.context.contentResolver,
-        helper.settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        helper.settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
       )
 
       if (!enabledServices || enabledServices === '') {
@@ -67,7 +67,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
 
       const serviceList = enabledServices.split(':').map((s) => s.trim())
       return serviceNamesToCheck.some((serviceName) =>
-        serviceList.includes(serviceName),
+        serviceList.includes(serviceName)
       )
     })
   })
@@ -83,7 +83,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
       await setServiceClassName(customServiceName)
 
       expect(mockModule.setServiceClassName).toHaveBeenCalledWith(
-        customServiceName,
+        customServiceName
       )
     })
 
@@ -102,7 +102,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
 
       expect(result).toBe(true)
       expect(mockModule.setServiceClassName).toHaveBeenCalledWith(
-        customServiceName,
+        customServiceName
       )
     })
 
@@ -114,7 +114,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
 
       // Enable a different service
       helper.settings.Secure.getString.mockReturnValue(
-        'com.example.testaccessibility/com.example.testaccessibility.DifferentService',
+        'com.example.testaccessibility/com.example.testaccessibility.DifferentService'
       )
 
       const result = await isEnabled()
@@ -134,7 +134,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
       }
 
       expect(mockModule.setServiceClassName).toHaveBeenCalledTimes(
-        serviceNames.length,
+        serviceNames.length
       )
     })
   })
@@ -235,14 +235,14 @@ describe('Android Accessibility Service Configuration Tests', () => {
 
       // Enable the configured service
       helper.settings.Secure.getString.mockReturnValue(
-        `${packageName}/${configuredService}`,
+        `${packageName}/${configuredService}`
       )
 
       const result = await isEnabled()
 
       expect(result).toBe(true)
       expect(mockModule.setServiceClassName).toHaveBeenCalledWith(
-        configuredService,
+        configuredService
       )
     })
 
@@ -257,7 +257,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
 
       // Enable the auto-detected service (but not the configured one)
       helper.settings.Secure.getString.mockReturnValue(
-        `${packageName}/${autoDetectedService}`,
+        `${packageName}/${autoDetectedService}`
       )
 
       const result = await isEnabled()
@@ -281,7 +281,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
 
       // Step 3: Check if configured service is enabled
       helper.settings.Secure.getString.mockReturnValue(
-        `${packageName}/${preferredService}`,
+        `${packageName}/${preferredService}`
       )
 
       const isServiceEnabled = await isEnabled()
@@ -289,7 +289,7 @@ describe('Android Accessibility Service Configuration Tests', () => {
 
       // Step 4: Verify configuration took precedence
       expect(mockModule.setServiceClassName).toHaveBeenCalledWith(
-        preferredService,
+        preferredService
       )
     })
   })

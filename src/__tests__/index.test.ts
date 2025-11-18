@@ -104,7 +104,7 @@ describe('ExpoAccessibilityService', () => {
       mockModule.setServiceClassName.mockRejectedValue(error)
 
       await expect(setServiceClassName('invalid')).rejects.toThrow(
-        'Invalid class name',
+        'Invalid class name'
       )
       expect(mockModule.setServiceClassName).toHaveBeenCalledTimes(1)
     })
@@ -158,7 +158,7 @@ describe('ExpoAccessibilityService', () => {
       expect(mockModule.addListener).toHaveBeenCalledTimes(1)
       expect(mockModule.addListener).toHaveBeenCalledWith(
         'onAccessibilityEvent',
-        listener,
+        listener
       )
       expect(subscription).toHaveProperty('remove')
       expect(typeof subscription.remove).toBe('function')
@@ -200,7 +200,7 @@ describe('ExpoAccessibilityService', () => {
       // listener2 should still be registered
       expect(mockModule.addListener).toHaveBeenCalledWith(
         'onAccessibilityEvent',
-        listener2,
+        listener2
       )
     })
 

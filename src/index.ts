@@ -53,11 +53,11 @@ export function getDetectedServices(): Promise<string[]> {
  * ```
  */
 export function addAccessibilityEventListener(
-  listener: (event: AccessibilityEvent) => void,
+  listener: (event: AccessibilityEvent) => void
 ): AccessibilityEventSubscription {
   const subscription = ExpoAccessibilityServiceModule.addListener(
     'onAccessibilityEvent',
-    listener,
+    listener
   )
 
   return {

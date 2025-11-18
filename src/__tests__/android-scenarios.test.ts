@@ -25,7 +25,7 @@ describe('Android Accessibility Service - Real World Scenarios', () => {
 
       const enabledServices = helper.settings.Secure.getString(
         helper.context.contentResolver,
-        helper.settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        helper.settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
       )
 
       if (!enabledServices || enabledServices === '') {
@@ -45,7 +45,7 @@ describe('Android Accessibility Service - Real World Scenarios', () => {
         return undefined
       } catch (error) {
         throw new Error(
-          `Could not open accessibility settings: ${(error as Error).message}`,
+          `Could not open accessibility settings: ${(error as Error).message}`
         )
       }
     })
@@ -147,7 +147,7 @@ describe('Android Accessibility Service - Real World Scenarios', () => {
 
           const enabledServices = testHelper.settings.Secure.getString(
             testHelper.context.contentResolver,
-            testHelper.settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            testHelper.settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
           )
 
           if (!enabledServices || enabledServices === '') {
@@ -179,21 +179,21 @@ describe('Android Accessibility Service - Real World Scenarios', () => {
 
     test('Scenario: SecurityException - app lacks permission to start activity', async () => {
       helper.setupFailedPermissionRequest(
-        'SecurityException: Permission denied',
+        'SecurityException: Permission denied'
       )
 
       await expect(askPermission()).rejects.toThrow(
-        'Could not open accessibility settings: SecurityException: Permission denied',
+        'Could not open accessibility settings: SecurityException: Permission denied'
       )
     })
 
     test('Scenario: ActivityNotFoundException - accessibility settings not available', async () => {
       helper.setupFailedPermissionRequest(
-        'ActivityNotFoundException: No Activity found',
+        'ActivityNotFoundException: No Activity found'
       )
 
       await expect(askPermission()).rejects.toThrow(
-        'Could not open accessibility settings: ActivityNotFoundException: No Activity found',
+        'Could not open accessibility settings: ActivityNotFoundException: No Activity found'
       )
     })
 
@@ -201,7 +201,7 @@ describe('Android Accessibility Service - Real World Scenarios', () => {
       helper.setupFailedPermissionRequest('System error occurred')
 
       await expect(askPermission()).rejects.toThrow(
-        'Could not open accessibility settings: System error occurred',
+        'Could not open accessibility settings: System error occurred'
       )
     })
   })
@@ -264,7 +264,7 @@ describe('Android Accessibility Service - Real World Scenarios', () => {
       const longServicesList = Array.from(
         { length: 100 },
         (_, i) =>
-          `com.example.service${i}/com.example.service${i}.AccessibilityService`,
+          `com.example.service${i}/com.example.service${i}.AccessibilityService`
       )
 
       helper.setEnabledServices(true, longServicesList)
@@ -326,7 +326,7 @@ describe('Android Accessibility Service - Real World Scenarios', () => {
 
       expect(helper.settings.Secure.getString).toHaveBeenCalledWith(
         helper.context.contentResolver,
-        'enabled_accessibility_services',
+        'enabled_accessibility_services'
       )
     })
 
@@ -339,7 +339,7 @@ describe('Android Accessibility Service - Real World Scenarios', () => {
       expect(helper.context.startActivity).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'android.settings.ACCESSIBILITY_SETTINGS',
-        }),
+        })
       )
     })
   })
