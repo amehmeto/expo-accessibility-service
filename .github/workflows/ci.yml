@@ -7,7 +7,7 @@ on:
 
 jobs:
   typescript:
-    name: TypeScript & JavaScript
+    name: TypeScript & Lint
     runs-on: ubuntu-latest
 
     steps:
@@ -17,7 +17,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
@@ -32,16 +32,11 @@ jobs:
       - name: Build module
         run: npm run build
 
-      - name: Install example dependencies
-        working-directory: ./example
-        run: npm ci
-
-      - name: TypeScript check (example)
-        working-directory: ./example
-        run: npx tsc --noEmit
+      - name: Run tests
+        run: npm test
 
   android:
-    name: Android & Kotlin
+    name: Android Build
     runs-on: ubuntu-latest
 
     steps:
@@ -67,10 +62,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Setup Node.js (for expo-module-scripts)
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install npm dependencies
@@ -80,18 +75,14 @@ jobs:
         working-directory: ./example
         run: npm ci
 
-      - name: Build Android module
-        working-directory: ./example/android
-        run: ./gradlew :amehmeto-expo-accessibility-service:build
+      - name: Generate Android project (expo prebuild)
+        working-directory: ./example
+        run: npx expo prebuild --platform android --no-install
 
-      - name: Run Kotlin lint (detekt)
+      - name: Run Kotlin unit tests
         working-directory: ./example/android
-        run: ./gradlew :amehmeto-expo-accessibility-service:detekt || echo "Detekt not configured, skipping"
+        run: ./gradlew :amehmeto-expo-accessibility-service:testDebugUnitTest
 
-      - name: Compile Kotlin sources
-        working-directory: ./example/android
-        run: ./gradlew :amehmeto-expo-accessibility-service:compileDebugKotlin
-
-      - name: Build example Android app (APK)
+      - name: Build example Android app
         working-directory: ./example/android
         run: ./gradlew assembleDebug
