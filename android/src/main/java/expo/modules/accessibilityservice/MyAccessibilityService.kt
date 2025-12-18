@@ -40,6 +40,23 @@ class MyAccessibilityService : AccessibilityService() {
         }
 
         fun getEventListener(): EventListener? = eventListeners.firstOrNull()
+
+        /**
+         * Notify all registered listeners of an app change event.
+         * Creates a snapshot of listeners to avoid ConcurrentModificationException.
+         * Each listener is called in a try/catch to ensure all listeners receive the event.
+         */
+        internal fun notifyListeners(packageName: String, className: String, timestamp: Long) {
+            // Create snapshot to avoid ConcurrentModificationException during iteration
+            val listeners = synchronized(eventListeners) { eventListeners.toList() }
+            listeners.forEach { listener ->
+                try {
+                    listener.onAppChanged(packageName, className, timestamp)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error notifying listener: ${e.message}", e)
+                }
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -55,14 +72,7 @@ class MyAccessibilityService : AccessibilityService() {
 
                 Log.d(TAG, "App changed: package=$packageName, class=$className")
 
-                // Notify ALL listeners, catching exceptions to ensure all get notified
-                eventListeners.forEach { listener ->
-                    try {
-                        listener.onAppChanged(packageName, className, timestamp)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error notifying listener: ${e.message}", e)
-                    }
-                }
+                notifyListeners(packageName, className, timestamp)
             }
         }
     }

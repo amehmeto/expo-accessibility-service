@@ -6,9 +6,7 @@ import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.never
-import org.mockito.kotlin.any
-import org.mockito.kotlin.doThrow
+import org.mockito.kotlin.eq
 
 class MyAccessibilityServiceTest {
 
@@ -72,15 +70,17 @@ class MyAccessibilityServiceTest {
         MyAccessibilityService.addEventListener(listener2)
         MyAccessibilityService.addEventListener(listener3)
 
-        // Simulate event notification (call onAppChanged on all listeners)
         val packageName = "com.example.app"
         val className = "MainActivity"
-        val timestamp = System.currentTimeMillis()
+        val timestamp = 1234567890L
 
-        // We need to test that when onAccessibilityEvent is called, all listeners are notified
-        // Since we can't easily call onAccessibilityEvent directly, we test the companion object behavior
-        // by verifying that multiple listeners can be added and getEventListener returns the first one
-        assertNotNull("getEventListener should return a listener", MyAccessibilityService.getEventListener())
+        // Call notifyListeners to simulate an accessibility event
+        MyAccessibilityService.notifyListeners(packageName, className, timestamp)
+
+        // Verify ALL listeners received the event
+        verify(listener1).onAppChanged(eq(packageName), eq(className), eq(timestamp))
+        verify(listener2).onAppChanged(eq(packageName), eq(className), eq(timestamp))
+        verify(listener3).onAppChanged(eq(packageName), eq(className), eq(timestamp))
     }
 
     @Test
@@ -135,13 +135,14 @@ class MyAccessibilityServiceTest {
         MyAccessibilityService.addEventListener(throwingListener)
         MyAccessibilityService.addEventListener(listener1)
 
-        // The test passes if no exception propagates and the listeners were added successfully
-        assertNotNull("Listeners should be added even if one might throw", MyAccessibilityService.getEventListener())
+        val packageName = "com.example.app"
+        val className = "MainActivity"
+        val timestamp = 1234567890L
 
-        // Both listeners should be present
-        val removed1 = MyAccessibilityService.removeEventListener(throwingListener)
-        val removed2 = MyAccessibilityService.removeEventListener(listener1)
-        assertTrue("throwingListener should be removable", removed1)
-        assertTrue("listener1 should be removable", removed2)
+        // This should NOT throw - exception in throwingListener should be caught
+        MyAccessibilityService.notifyListeners(packageName, className, timestamp)
+
+        // Verify listener1 still received the event despite throwingListener throwing
+        verify(listener1).onAppChanged(eq(packageName), eq(className), eq(timestamp))
     }
 }
