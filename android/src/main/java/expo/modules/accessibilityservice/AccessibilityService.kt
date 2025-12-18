@@ -1,11 +1,10 @@
 package expo.modules.accessibilityservice
 
-import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log
 import java.util.Collections
 
-class MyAccessibilityService : AccessibilityService() {
+class AccessibilityService : android.accessibilityservice.AccessibilityService() {
 
     // Callback interface for event listeners
     interface EventListener {
@@ -13,7 +12,7 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        private const val TAG = "MyAccessibilityService"
+        private const val TAG = "AccessibilityService"
 
         // Thread-safe set of listeners (replaces single eventListener)
         private val eventListeners = Collections.synchronizedSet(mutableSetOf<EventListener>())
