@@ -3,6 +3,7 @@ package expo.modules.accessibilityservice
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log
+import java.util.Collections
 
 class MyAccessibilityService : AccessibilityService() {
 
@@ -14,15 +15,31 @@ class MyAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "MyAccessibilityService"
 
-        // Static reference to the event listener (set by the module)
-        @Volatile
-        private var eventListener: EventListener? = null
+        // Thread-safe set of listeners (replaces single eventListener)
+        private val eventListeners = Collections.synchronizedSet(mutableSetOf<EventListener>())
 
-        fun setEventListener(listener: EventListener?) {
-            eventListener = listener
+        fun addEventListener(listener: EventListener): Boolean {
+            val added = eventListeners.add(listener)
+            Log.d(TAG, "addEventListener: added=$added, total=${eventListeners.size}")
+            return added
         }
 
-        fun getEventListener(): EventListener? = eventListener
+        fun removeEventListener(listener: EventListener): Boolean {
+            val removed = eventListeners.remove(listener)
+            Log.d(TAG, "removeEventListener: removed=$removed, total=${eventListeners.size}")
+            return removed
+        }
+
+        @Deprecated(
+            message = "Use addEventListener/removeEventListener for multiple listener support",
+            replaceWith = ReplaceWith("addEventListener(listener)")
+        )
+        fun setEventListener(listener: EventListener?) {
+            eventListeners.clear()
+            listener?.let { eventListeners.add(it) }
+        }
+
+        fun getEventListener(): EventListener? = eventListeners.firstOrNull()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -36,10 +53,16 @@ class MyAccessibilityService : AccessibilityService() {
             if (!packageName.isNullOrEmpty() && !className.isNullOrEmpty()) {
                 val timestamp = System.currentTimeMillis()
 
-                Log.d(TAG, "App changed: package=$packageName, class=$className, time=$timestamp")
+                Log.d(TAG, "App changed: package=$packageName, class=$className")
 
-                // Notify the listener (module)
-                eventListener?.onAppChanged(packageName, className, timestamp)
+                // Notify ALL listeners, catching exceptions to ensure all get notified
+                eventListeners.forEach { listener ->
+                    try {
+                        listener.onAppChanged(packageName, className, timestamp)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error notifying listener: ${e.message}", e)
+                    }
+                }
             }
         }
     }
@@ -62,7 +85,6 @@ class MyAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "Accessibility service destroyed")
-        // Clean up listener reference to avoid memory leaks
-        eventListener = null
+        // Note: Listeners manage their own lifecycle via removeEventListener()
     }
 }

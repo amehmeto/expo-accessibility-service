@@ -28,16 +28,16 @@ class ExpoAccessibilityServiceModule : Module(), MyAccessibilityService.EventLis
     // Define events that can be emitted to JavaScript
     Events("onAccessibilityEvent")
 
-    // Register this module as the event listener when module is created
+    // Register this module as an event listener when module is created
     OnCreate {
       Log.d(TAG, "Module created, registering as event listener")
-      MyAccessibilityService.setEventListener(this@ExpoAccessibilityServiceModule)
+      MyAccessibilityService.addEventListener(this@ExpoAccessibilityServiceModule)
     }
 
     // Unregister when module is destroyed to avoid memory leaks
     OnDestroy {
       Log.d(TAG, "Module destroyed, unregistering event listener")
-      MyAccessibilityService.setEventListener(null)
+      MyAccessibilityService.removeEventListener(this@ExpoAccessibilityServiceModule)
     }
 
     AsyncFunction("isEnabled") { promise: Promise ->
