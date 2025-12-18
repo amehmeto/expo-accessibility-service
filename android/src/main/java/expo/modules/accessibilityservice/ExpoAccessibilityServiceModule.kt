@@ -10,10 +10,9 @@ import android.text.TextUtils
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.accessibilityservice.AccessibilityService
 import android.util.Log
 
-class ExpoAccessibilityServiceModule : Module(), MyAccessibilityService.EventListener {
+class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListener {
 
   // Configurable service class name - can be set by the app
   private var serviceClassName: String? = null
@@ -28,16 +27,16 @@ class ExpoAccessibilityServiceModule : Module(), MyAccessibilityService.EventLis
     // Define events that can be emitted to JavaScript
     Events("onAccessibilityEvent")
 
-    // Register this module as the event listener when module is created
+    // Register this module as an event listener when module is created
     OnCreate {
       Log.d(TAG, "Module created, registering as event listener")
-      MyAccessibilityService.setEventListener(this@ExpoAccessibilityServiceModule)
+      AccessibilityService.addEventListener(this@ExpoAccessibilityServiceModule)
     }
 
     // Unregister when module is destroyed to avoid memory leaks
     OnDestroy {
       Log.d(TAG, "Module destroyed, unregistering event listener")
-      MyAccessibilityService.setEventListener(null)
+      AccessibilityService.removeEventListener(this@ExpoAccessibilityServiceModule)
     }
 
     AsyncFunction("isEnabled") { promise: Promise ->
@@ -114,7 +113,7 @@ class ExpoAccessibilityServiceModule : Module(), MyAccessibilityService.EventLis
           detectedServices.map { "$packageName/$it" }
         } else {
           // 3. Fall back to default for backward compatibility
-          listOf("$packageName/${packageName}.MyAccessibilityService")
+          listOf("$packageName/${packageName}.AccessibilityService")
         }
       }
     }
