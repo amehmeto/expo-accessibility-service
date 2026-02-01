@@ -28,6 +28,17 @@
   "author": "amehmeto",
   "license": "MIT",
   "homepage": "https://github.com/amehmeto/expo-accessibility-service#readme",
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "npm run lint -- --fix"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ],
+    ".husky/scripts/*.sh": [
+      "shellcheck"
+    ]
+  },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
@@ -38,6 +49,8 @@
     "expo-module-scripts": "^4.1.9",
     "husky": "^9.1.7",
     "jest": "^29.7.0",
+    "lint-staged": "^16.0.0",
+    "prettier": "^3.2.5",
     "react-native": "0.79.1",
     "semantic-release": "^25.0.2",
     "ts-jest": "^29.4.1",
