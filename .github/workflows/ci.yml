@@ -107,7 +107,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: pr-${{ github.event.pull_request.number }}-${{ github.sha }}
-          name: "Accessibility Service Example APK - PR #${{ github.event.pull_request.number }}"
+          name: "Accessibility Service Example APK - PR #${{ github.event.pull_request.number }} (build ${{ github.run_number }})"
           body: |
             Automated build of the **Accessibility Service** example app for PR #${{ github.event.pull_request.number }}.
 
