@@ -124,6 +124,41 @@ class AccessibilityServiceTest {
     }
 
     @Test
+    fun `hasListener returns true for registered listener`() {
+        AccessibilityService.addEventListener(listener1)
+
+        assertTrue("hasListener should return true for registered listener", AccessibilityService.hasListener(listener1))
+        assertFalse("hasListener should return false for unregistered listener", AccessibilityService.hasListener(listener2))
+    }
+
+    @Test
+    fun `hasListener returns false after removal`() {
+        AccessibilityService.addEventListener(listener1)
+        AccessibilityService.removeEventListener(listener1)
+
+        assertFalse("hasListener should return false after removal", AccessibilityService.hasListener(listener1))
+    }
+
+    @Test
+    fun `getListenerCount tracks registered listeners`() {
+        assertEquals("getListenerCount should be 0 initially", 0, AccessibilityService.getListenerCount())
+
+        AccessibilityService.addEventListener(listener1)
+        assertEquals("getListenerCount should be 1 after adding one", 1, AccessibilityService.getListenerCount())
+
+        AccessibilityService.addEventListener(listener2)
+        assertEquals("getListenerCount should be 2 after adding two", 2, AccessibilityService.getListenerCount())
+
+        AccessibilityService.removeEventListener(listener1)
+        assertEquals("getListenerCount should be 1 after removing one", 1, AccessibilityService.getListenerCount())
+    }
+
+    @Test
+    fun `isConnected is false by default`() {
+        assertFalse("isConnected should be false by default", AccessibilityService.isConnected)
+    }
+
+    @Test
     fun `exception in one listener does not affect others`() {
         // Create a listener that throws an exception
         val throwingListener = object : AccessibilityService.EventListener {
