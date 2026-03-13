@@ -1,6 +1,9 @@
 package expo.modules.accessibilityservice
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -131,5 +134,98 @@ class AccessibilityServiceLifecycleTest {
             AccessibilityService.hasListener(listener))
         assertEquals("Listener count should be preserved",
             1, AccessibilityService.getListenerCount())
+    }
+
+    /**
+     * Tests the broadcast-triggered re-registration pattern used by
+     * ExpoAccessibilityServiceModule and BlockingCallback.
+     *
+     * ExpoAccessibilityServiceModule cannot be unit-tested directly because it
+     * depends on the Expo module framework (Module, ModuleDefinition, appContext).
+     * This test validates the same pattern: a BroadcastReceiver that listens for
+     * ACTION_SERVICE_CONNECTED and re-registers a dropped listener.
+     */
+    @Test
+    fun `broadcast receiver re-registers dropped listener on ACTION_SERVICE_CONNECTED`() {
+        val listener = object : AccessibilityService.EventListener {
+            override fun onAppChanged(packageName: String, className: String, timestamp: Long) {}
+        }
+
+        // Register listener, then simulate it being dropped by Android
+        AccessibilityService.addEventListener(listener)
+        AccessibilityService.removeEventListener(listener)
+        assertFalse("Listener should be dropped",
+            AccessibilityService.hasListener(listener))
+
+        // Register a BroadcastReceiver that re-registers the listener (same pattern as the module)
+        val context = RuntimeEnvironment.getApplication()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent?.action == AccessibilityService.ACTION_SERVICE_CONNECTED) {
+                    if (!AccessibilityService.hasListener(listener)) {
+                        AccessibilityService.addEventListener(listener)
+                    }
+                }
+            }
+        }
+        context.registerReceiver(
+            receiver, IntentFilter(AccessibilityService.ACTION_SERVICE_CONNECTED)
+        )
+
+        // Simulate service restart — onServiceConnected sends the broadcast
+        val service = Robolectric.buildService(AccessibilityService::class.java)
+            .create()
+            .get()
+        service.onServiceConnected()
+
+        // Process the broadcast
+        shadowOf(RuntimeEnvironment.getApplication()).run {
+            val broadcastIntent = broadcastIntents
+                .first { it.action == AccessibilityService.ACTION_SERVICE_CONNECTED }
+            receiver.onReceive(context, broadcastIntent)
+        }
+
+        assertTrue("Listener should be re-registered after broadcast",
+            AccessibilityService.hasListener(listener))
+
+        context.unregisterReceiver(receiver)
+    }
+
+    @Test
+    fun `broadcast receiver does not duplicate listener if already registered`() {
+        val listener = object : AccessibilityService.EventListener {
+            override fun onAppChanged(packageName: String, className: String, timestamp: Long) {}
+        }
+
+        // Listener is already registered
+        AccessibilityService.addEventListener(listener)
+
+        val context = RuntimeEnvironment.getApplication()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (!AccessibilityService.hasListener(listener)) {
+                    AccessibilityService.addEventListener(listener)
+                }
+            }
+        }
+        context.registerReceiver(
+            receiver, IntentFilter(AccessibilityService.ACTION_SERVICE_CONNECTED)
+        )
+
+        val service = Robolectric.buildService(AccessibilityService::class.java)
+            .create()
+            .get()
+        service.onServiceConnected()
+
+        shadowOf(RuntimeEnvironment.getApplication()).run {
+            val broadcastIntent = broadcastIntents
+                .first { it.action == AccessibilityService.ACTION_SERVICE_CONNECTED }
+            receiver.onReceive(context, broadcastIntent)
+        }
+
+        assertEquals("Should still have exactly 1 listener (no duplicate)",
+            1, AccessibilityService.getListenerCount())
+
+        context.unregisterReceiver(receiver)
     }
 }

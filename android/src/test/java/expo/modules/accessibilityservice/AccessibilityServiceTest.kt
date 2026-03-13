@@ -169,6 +169,17 @@ class AccessibilityServiceTest {
     }
 
     @Test
+    fun `setConnectedForTesting sets isConnected`() {
+        assertFalse("isConnected should be false initially", AccessibilityService.isConnected)
+
+        AccessibilityService.setConnectedForTesting(true)
+        assertTrue("isConnected should be true after setConnectedForTesting(true)", AccessibilityService.isConnected)
+
+        AccessibilityService.setConnectedForTesting(false)
+        assertFalse("isConnected should be false after setConnectedForTesting(false)", AccessibilityService.isConnected)
+    }
+
+    @Test
     fun `exception in one listener does not affect others`() {
         // Create a listener that throws an exception
         val throwingListener = object : AccessibilityService.EventListener {

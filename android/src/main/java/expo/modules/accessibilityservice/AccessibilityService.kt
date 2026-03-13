@@ -90,7 +90,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             // Create snapshot to avoid ConcurrentModificationException during iteration
             val listeners = synchronized(eventListeners) { eventListeners.toList() }
             if (listeners.isEmpty()) {
-                Log.d(TAG, "notifyListeners: no listeners registered, event dropped for $packageName")
+                Log.w(TAG, "notifyListeners: no listeners registered, event dropped for $packageName")
             }
             listeners.forEach { listener ->
                 try {
