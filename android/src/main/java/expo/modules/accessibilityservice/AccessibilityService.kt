@@ -124,7 +124,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         Log.d(TAG, "Accessibility service interrupted")
     }
 
-    override fun onServiceConnected() {
+    public override fun onServiceConnected() {
         super.onServiceConnected()
         isConnected = true
         Log.d(TAG, "Accessibility service connected, listeners=${eventListeners.size}")
@@ -138,13 +138,13 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         Log.d(TAG, "Service connected broadcast sent")
     }
 
-    override fun onUnbind(intent: android.content.Intent?): Boolean {
+    public override fun onUnbind(intent: android.content.Intent?): Boolean {
         isConnected = false
         Log.d(TAG, "Accessibility service unbound (permission revoked or service disabled)")
         return super.onUnbind(intent)
     }
 
-    override fun onDestroy() {
+    public override fun onDestroy() {
         isConnected = false
         super.onDestroy()
         Log.d(TAG, "Accessibility service destroyed, listeners=${eventListeners.size}")
