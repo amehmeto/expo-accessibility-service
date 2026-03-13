@@ -4,18 +4,22 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.IntentFilter
 import android.provider.Settings
 import android.text.TextUtils
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.util.Log
 
 class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListener {
 
   // Configurable service class name - can be set by the app
   private var serviceClassName: String? = null
+  private var serviceConnectedReceiver: BroadcastReceiver? = null
 
   companion object {
     private const val TAG = "ExpoAccessibilityModule"
@@ -31,11 +35,13 @@ class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListe
     OnCreate {
       Log.d(TAG, "Module created, registering as event listener")
       AccessibilityService.addEventListener(this@ExpoAccessibilityServiceModule)
+      registerServiceConnectedReceiver()
     }
 
     // Unregister when module is destroyed to avoid memory leaks
     OnDestroy {
       Log.d(TAG, "Module destroyed, unregistering event listener")
+      unregisterServiceConnectedReceiver()
       AccessibilityService.removeEventListener(this@ExpoAccessibilityServiceModule)
     }
 
@@ -76,6 +82,39 @@ class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListe
     } catch (e: Exception) {
       Log.e(TAG, "Error emitting accessibility event", e)
     }
+  }
+
+  private fun registerServiceConnectedReceiver() {
+    val receiver = object : BroadcastReceiver() {
+      override fun onReceive(ctx: Context?, intent: Intent?) {
+        if (intent?.action == AccessibilityService.ACTION_SERVICE_CONNECTED) {
+          Log.d(TAG, "Service connected broadcast received")
+          if (!AccessibilityService.hasListener(this@ExpoAccessibilityServiceModule)) {
+            AccessibilityService.addEventListener(this@ExpoAccessibilityServiceModule)
+            Log.d(TAG, "Re-registered as event listener after service restart")
+          }
+        }
+      }
+    }
+    val filter = IntentFilter(AccessibilityService.ACTION_SERVICE_CONNECTED)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    } else {
+      context.registerReceiver(receiver, filter)
+    }
+    serviceConnectedReceiver = receiver
+    Log.d(TAG, "Registered service connected receiver")
+  }
+
+  private fun unregisterServiceConnectedReceiver() {
+    serviceConnectedReceiver?.let {
+      try {
+        context.unregisterReceiver(it)
+      } catch (e: Exception) {
+        Log.w(TAG, "Failed to unregister service connected receiver: ${e.message}")
+      }
+    }
+    serviceConnectedReceiver = null
   }
 
   private val context

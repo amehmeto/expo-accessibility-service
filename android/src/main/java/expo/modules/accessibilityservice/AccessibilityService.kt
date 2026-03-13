@@ -1,5 +1,6 @@
 package expo.modules.accessibilityservice
 
+import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log
 import java.util.Collections
@@ -14,6 +15,21 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     companion object {
         private const val TAG = "AccessibilityService"
 
+        /**
+         * Broadcast action sent when the accessibility service (re)connects.
+         * Listeners can register a BroadcastReceiver for this action to re-register
+         * themselves after Android kills and restarts the service.
+         */
+        const val ACTION_SERVICE_CONNECTED = "expo.modules.accessibilityservice.SERVICE_CONNECTED"
+
+        /**
+         * Tracks whether the accessibility service is currently connected.
+         * Reset on process restart (static state is lost).
+         */
+        @Volatile
+        var isConnected: Boolean = false
+            private set
+
         // Thread-safe set of listeners (replaces single eventListener)
         private val eventListeners = Collections.synchronizedSet(mutableSetOf<EventListener>())
 
@@ -27,6 +43,31 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             val removed = eventListeners.remove(listener)
             Log.d(TAG, "removeEventListener: removed=$removed, total=${eventListeners.size}")
             return removed
+        }
+
+        /**
+         * Check if a specific listener is currently registered.
+         */
+        fun hasListener(listener: EventListener): Boolean = eventListeners.contains(listener)
+
+        /**
+         * Return the number of currently registered listeners.
+         */
+        fun getListenerCount(): Int = eventListeners.size
+
+        /**
+         * Reset all state for testing purposes.
+         */
+        fun resetForTesting() {
+            eventListeners.clear()
+            isConnected = false
+        }
+
+        /**
+         * Set connection state for testing purposes.
+         */
+        fun setConnectedForTesting(connected: Boolean) {
+            isConnected = connected
         }
 
         @Deprecated(
@@ -48,6 +89,9 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         internal fun notifyListeners(packageName: String, className: String, timestamp: Long) {
             // Create snapshot to avoid ConcurrentModificationException during iteration
             val listeners = synchronized(eventListeners) { eventListeners.toList() }
+            if (listeners.isEmpty()) {
+                Log.w(TAG, "notifyListeners: no listeners registered, event dropped for $packageName")
+            }
             listeners.forEach { listener ->
                 try {
                     listener.onAppChanged(packageName, className, timestamp)
@@ -80,20 +124,29 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         Log.d(TAG, "Accessibility service interrupted")
     }
 
-    override fun onServiceConnected() {
+    public override fun onServiceConnected() {
         super.onServiceConnected()
-        Log.d(TAG, "Accessibility service connected")
+        isConnected = true
+        Log.d(TAG, "Accessibility service connected, listeners=${eventListeners.size}")
+
+        // Broadcast so that ExpoAccessibilityServiceModule (or any listener) can
+        // re-register after Android kills and restarts this service.
+        val intent = Intent(ACTION_SERVICE_CONNECTED).apply {
+            setPackage(packageName)
+        }
+        sendBroadcast(intent)
+        Log.d(TAG, "Service connected broadcast sent")
     }
 
-    override fun onUnbind(intent: android.content.Intent?): Boolean {
+    public override fun onUnbind(intent: android.content.Intent?): Boolean {
+        isConnected = false
         Log.d(TAG, "Accessibility service unbound (permission revoked or service disabled)")
-        // This is called when the accessibility service is disabled
         return super.onUnbind(intent)
     }
 
-    override fun onDestroy() {
+    public override fun onDestroy() {
+        isConnected = false
         super.onDestroy()
-        Log.d(TAG, "Accessibility service destroyed")
-        // Note: Listeners manage their own lifecycle via removeEventListener()
+        Log.d(TAG, "Accessibility service destroyed, listeners=${eventListeners.size}")
     }
 }

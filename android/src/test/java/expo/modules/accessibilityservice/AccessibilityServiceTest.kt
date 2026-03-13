@@ -17,8 +17,7 @@ class AccessibilityServiceTest {
     @Before
     fun setUp() {
         // Clear any existing listeners before each test
-        @Suppress("DEPRECATION")
-        AccessibilityService.setEventListener(null)
+        AccessibilityService.resetForTesting()
 
         listener1 = mock()
         listener2 = mock()
@@ -28,8 +27,7 @@ class AccessibilityServiceTest {
     @After
     fun tearDown() {
         // Clean up after each test
-        @Suppress("DEPRECATION")
-        AccessibilityService.setEventListener(null)
+        AccessibilityService.resetForTesting()
     }
 
     @Test
@@ -121,6 +119,64 @@ class AccessibilityServiceTest {
         // Since it's a Set, we can't guarantee order, but we should get one of the listeners
         assertTrue("getEventListener should return one of the added listeners",
             result == listener1 || result == listener2)
+    }
+
+    @Test
+    fun `hasListener returns true for registered listener`() {
+        AccessibilityService.addEventListener(listener1)
+
+        assertTrue("hasListener should return true for registered listener", AccessibilityService.hasListener(listener1))
+        assertFalse("hasListener should return false for unregistered listener", AccessibilityService.hasListener(listener2))
+    }
+
+    @Test
+    fun `hasListener returns false after removal`() {
+        AccessibilityService.addEventListener(listener1)
+        AccessibilityService.removeEventListener(listener1)
+
+        assertFalse("hasListener should return false after removal", AccessibilityService.hasListener(listener1))
+    }
+
+    @Test
+    fun `getListenerCount tracks registered listeners`() {
+        assertEquals("getListenerCount should be 0 initially", 0, AccessibilityService.getListenerCount())
+
+        AccessibilityService.addEventListener(listener1)
+        assertEquals("getListenerCount should be 1 after adding one", 1, AccessibilityService.getListenerCount())
+
+        AccessibilityService.addEventListener(listener2)
+        assertEquals("getListenerCount should be 2 after adding two", 2, AccessibilityService.getListenerCount())
+
+        AccessibilityService.removeEventListener(listener1)
+        assertEquals("getListenerCount should be 1 after removing one", 1, AccessibilityService.getListenerCount())
+    }
+
+    @Test
+    fun `isConnected is false by default`() {
+        assertFalse("isConnected should be false by default", AccessibilityService.isConnected)
+    }
+
+    @Test
+    fun `resetForTesting clears listeners and resets isConnected`() {
+        AccessibilityService.addEventListener(listener1)
+        AccessibilityService.addEventListener(listener2)
+        assertEquals("should have 2 listeners", 2, AccessibilityService.getListenerCount())
+
+        AccessibilityService.resetForTesting()
+
+        assertEquals("listeners should be cleared", 0, AccessibilityService.getListenerCount())
+        assertFalse("isConnected should be false after reset", AccessibilityService.isConnected)
+    }
+
+    @Test
+    fun `setConnectedForTesting sets isConnected`() {
+        assertFalse("isConnected should be false initially", AccessibilityService.isConnected)
+
+        AccessibilityService.setConnectedForTesting(true)
+        assertTrue("isConnected should be true after setConnectedForTesting(true)", AccessibilityService.isConnected)
+
+        AccessibilityService.setConnectedForTesting(false)
+        assertFalse("isConnected should be false after setConnectedForTesting(false)", AccessibilityService.isConnected)
     }
 
     @Test
