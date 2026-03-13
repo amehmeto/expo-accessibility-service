@@ -17,8 +17,7 @@ class AccessibilityServiceTest {
     @Before
     fun setUp() {
         // Clear any existing listeners before each test
-        @Suppress("DEPRECATION")
-        AccessibilityService.setEventListener(null)
+        AccessibilityService.resetForTesting()
 
         listener1 = mock()
         listener2 = mock()
@@ -28,8 +27,7 @@ class AccessibilityServiceTest {
     @After
     fun tearDown() {
         // Clean up after each test
-        @Suppress("DEPRECATION")
-        AccessibilityService.setEventListener(null)
+        AccessibilityService.resetForTesting()
     }
 
     @Test
@@ -156,6 +154,18 @@ class AccessibilityServiceTest {
     @Test
     fun `isConnected is false by default`() {
         assertFalse("isConnected should be false by default", AccessibilityService.isConnected)
+    }
+
+    @Test
+    fun `resetForTesting clears listeners and resets isConnected`() {
+        AccessibilityService.addEventListener(listener1)
+        AccessibilityService.addEventListener(listener2)
+        assertEquals("should have 2 listeners", 2, AccessibilityService.getListenerCount())
+
+        AccessibilityService.resetForTesting()
+
+        assertEquals("listeners should be cleared", 0, AccessibilityService.getListenerCount())
+        assertFalse("isConnected should be false after reset", AccessibilityService.isConnected)
     }
 
     @Test

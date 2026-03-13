@@ -55,6 +55,21 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          */
         fun getListenerCount(): Int = eventListeners.size
 
+        /**
+         * Reset all state for testing purposes.
+         */
+        fun resetForTesting() {
+            eventListeners.clear()
+            isConnected = false
+        }
+
+        /**
+         * Set connection state for testing purposes.
+         */
+        fun setConnectedForTesting(connected: Boolean) {
+            isConnected = connected
+        }
+
         @Deprecated(
             message = "Use addEventListener/removeEventListener for multiple listener support",
             replaceWith = ReplaceWith("addEventListener(listener)")
@@ -75,7 +90,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             // Create snapshot to avoid ConcurrentModificationException during iteration
             val listeners = synchronized(eventListeners) { eventListeners.toList() }
             if (listeners.isEmpty()) {
-                Log.w(TAG, "notifyListeners: no listeners registered, event dropped for $packageName")
+                Log.d(TAG, "notifyListeners: no listeners registered, event dropped for $packageName")
             }
             listeners.forEach { listener ->
                 try {
@@ -114,8 +129,8 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         isConnected = true
         Log.d(TAG, "Accessibility service connected, listeners=${eventListeners.size}")
 
-        // Broadcast so that BlockingCallback (or any listener) can re-register
-        // after Android kills and restarts this service.
+        // Broadcast so that ExpoAccessibilityServiceModule (or any listener) can
+        // re-register after Android kills and restarts this service.
         val intent = Intent(ACTION_SERVICE_CONNECTED).apply {
             setPackage(packageName)
         }
