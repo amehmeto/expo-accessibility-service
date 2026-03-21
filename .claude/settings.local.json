@@ -36,7 +36,12 @@
       "Bash(sh:*)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docs.expo.dev)",
-      "WebSearch"
+      "WebSearch",
+      "Skill(ralph-wiggum:ralph-loop)",
+      "Bash(bash \"/Users/arthurmehmetoglu/.claude/plugins/cache/claude-code-plugins/ralph-wiggum/1.0.0/scripts/setup-ralph-loop.sh\" Fix the semantic release configuration bug in this repo. Investigate the CI workflow, package.json, and release config. Check git history for recent semantic-release related changes. Diagnose the root cause, fix it, commit the fix, and run a dry-run if possible. --completion-promise 'SEMANTIC RELEASE FIXED' --max-iterations 10)",
+      "Bash(gh release:*)",
+      "Skill(ralph-wiggum:cancel-ralph)",
+      "Bash(bash \"/Users/arthurmehmetoglu/.claude/plugins/cache/claude-code-plugins/ralph-wiggum/1.0.0/scripts/setup-ralph-loop.sh\" Fix the semantic release bug. The .releaserc.json is already updated with successComment and failComment disabled. Now commit the fix, push it to a branch, create a PR, merge it, and monitor the Release workflow on GitHub until it passes with zero errors. Only declare fixed when the Release workflow succeeds on main. --completion-promise 'SEMANTIC RELEASE FIXED' --max-iterations 10)"
     ],
     "deny": [
       "Bash(git branch -D:*)",
