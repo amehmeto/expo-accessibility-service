@@ -5,6 +5,7 @@ import {
   setServiceClassName,
   getDetectedServices,
   addAccessibilityEventListener,
+  emitCurrentForegroundApp,
   AccessibilityEvent,
 } from '../index'
 
@@ -18,6 +19,7 @@ jest.mock('../ExpoAccessibilityServiceModule', () => ({
   askPermission: jest.fn(),
   setServiceClassName: jest.fn(),
   getDetectedServices: jest.fn(),
+  emitCurrentForegroundApp: jest.fn(),
   addListener: jest.fn(() => mockSubscription),
 }))
 
@@ -104,7 +106,7 @@ describe('ExpoAccessibilityService', () => {
       mockModule.setServiceClassName.mockRejectedValue(error)
 
       await expect(setServiceClassName('invalid')).rejects.toThrow(
-        'Invalid class name'
+        'Invalid class name',
       )
       expect(mockModule.setServiceClassName).toHaveBeenCalledTimes(1)
     })
@@ -149,6 +151,33 @@ describe('ExpoAccessibilityService', () => {
     })
   })
 
+  describe('emitCurrentForegroundApp', () => {
+    it('should call native module emitCurrentForegroundApp', async () => {
+      mockModule.emitCurrentForegroundApp.mockResolvedValue(undefined)
+
+      await emitCurrentForegroundApp()
+
+      expect(mockModule.emitCurrentForegroundApp).toHaveBeenCalledTimes(1)
+    })
+
+    it('should propagate errors from native module', async () => {
+      const error = new Error('Service not connected')
+      mockModule.emitCurrentForegroundApp.mockRejectedValue(error)
+
+      await expect(emitCurrentForegroundApp()).rejects.toThrow(
+        'Service not connected',
+      )
+    })
+
+    it('should resolve without returning a value', async () => {
+      mockModule.emitCurrentForegroundApp.mockResolvedValue(undefined)
+
+      const result = await emitCurrentForegroundApp()
+
+      expect(result).toBeUndefined()
+    })
+  })
+
   describe('addAccessibilityEventListener', () => {
     it('should register listener and return subscription with remove method', () => {
       const listener = jest.fn()
@@ -158,7 +187,7 @@ describe('ExpoAccessibilityService', () => {
       expect(mockModule.addListener).toHaveBeenCalledTimes(1)
       expect(mockModule.addListener).toHaveBeenCalledWith(
         'onAccessibilityEvent',
-        listener
+        listener,
       )
       expect(subscription).toHaveProperty('remove')
       expect(typeof subscription.remove).toBe('function')
@@ -200,7 +229,7 @@ describe('ExpoAccessibilityService', () => {
       // listener2 should still be registered
       expect(mockModule.addListener).toHaveBeenCalledWith(
         'onAccessibilityEvent',
-        listener2
+        listener2,
       )
     })
 

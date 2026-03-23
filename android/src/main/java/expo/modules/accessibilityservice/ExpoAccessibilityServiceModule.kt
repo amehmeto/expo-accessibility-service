@@ -63,6 +63,12 @@ class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListe
       val services = getAccessibilityServicesFromManifest()
       promise.resolve(services)
     }
+
+    AsyncFunction("emitCurrentForegroundApp") { promise: Promise ->
+      Log.d(TAG, "emitCurrentForegroundApp called from JS")
+      AccessibilityService.emitCurrentForegroundApp()
+      promise.resolve()
+    }
   }
 
   // Implement EventListener interface

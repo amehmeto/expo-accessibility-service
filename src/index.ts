@@ -53,16 +53,38 @@ export function getDetectedServices(): Promise<string[]> {
  * ```
  */
 export function addAccessibilityEventListener(
-  listener: (event: AccessibilityEvent) => void
+  listener: (event: AccessibilityEvent) => void,
 ): AccessibilityEventSubscription {
   const subscription = ExpoAccessibilityServiceModule.addListener(
     'onAccessibilityEvent',
-    listener
+    listener,
   )
 
   return {
     remove: () => subscription.remove(),
   }
+}
+
+/**
+ * Emit the current foreground app as a synthetic accessibility event.
+ * Uses rootInActiveWindow to determine what app is currently on screen.
+ *
+ * This is useful when the foreground service starts while an app is already
+ * visible (no TYPE_WINDOW_STATE_CHANGED event fires for already-visible apps).
+ * Calling this will trigger any registered accessibility event listeners with
+ * the current foreground app's package name.
+ *
+ * @returns Promise that resolves when the event has been emitted
+ *
+ * @example
+ * ```typescript
+ * // After starting the foreground service from a native alarm,
+ * // detect what app is currently on screen:
+ * await emitCurrentForegroundApp();
+ * ```
+ */
+export function emitCurrentForegroundApp(): Promise<void> {
+  return ExpoAccessibilityServiceModule.emitCurrentForegroundApp()
 }
 
 // Re-export types for convenience

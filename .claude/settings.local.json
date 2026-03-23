@@ -36,7 +36,12 @@
       "Bash(sh:*)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docs.expo.dev)",
-      "WebSearch"
+      "WebSearch",
+      "Skill(ralph-wiggum:ralph-loop)",
+      "Bash(gh release:*)",
+      "Skill(ralph-wiggum:cancel-ralph)",
+      "Bash(SKIP_E2E_CHECK=true git push)",
+      "Bash(git rm:*)"
     ],
     "deny": [
       "Bash(git branch -D:*)",

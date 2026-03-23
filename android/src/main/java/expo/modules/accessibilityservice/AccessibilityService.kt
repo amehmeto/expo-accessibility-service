@@ -30,6 +30,13 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         var isConnected: Boolean = false
             private set
 
+        /**
+         * Reference to the current service instance, nulled on unbind/destroy.
+         * Used by emitCurrentForegroundApp() to access rootInActiveWindow.
+         */
+        @Volatile
+        private var instance: AccessibilityService? = null
+
         // Thread-safe set of listeners (replaces single eventListener)
         private val eventListeners = Collections.synchronizedSet(mutableSetOf<EventListener>())
 
@@ -82,6 +89,44 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         fun getEventListener(): EventListener? = eventListeners.firstOrNull()
 
         /**
+         * Emit the current foreground app as a synthetic accessibility event.
+         * Uses rootInActiveWindow to determine what app is currently on screen.
+         * This is useful when the service starts while an app is already in the foreground
+         * (no TYPE_WINDOW_STATE_CHANGED event fires for already-visible apps).
+         */
+        fun emitCurrentForegroundApp() {
+            val service = instance
+            if (service == null) {
+                Log.w(TAG, "emitCurrentForegroundApp: service instance not available")
+                return
+            }
+
+            try {
+                val rootNode = service.rootInActiveWindow
+                if (rootNode == null) {
+                    Log.w(TAG, "emitCurrentForegroundApp: rootInActiveWindow is null")
+                    return
+                }
+
+                val packageName = rootNode.packageName?.toString()
+                val className = rootNode.className?.toString() ?: "android.view.View"
+                // recycle() is deprecated on API 34+ (no-op); safe to call on older APIs
+                rootNode.recycle()
+
+                if (packageName.isNullOrEmpty()) {
+                    Log.w(TAG, "emitCurrentForegroundApp: no package name from root node")
+                    return
+                }
+
+                val timestamp = System.currentTimeMillis()
+                Log.d(TAG, "emitCurrentForegroundApp: emitting $packageName")
+                notifyListeners(packageName, className, timestamp)
+            } catch (e: Exception) {
+                Log.e(TAG, "emitCurrentForegroundApp failed: ${e.message}", e)
+            }
+        }
+
+        /**
          * Notify all registered listeners of an app change event.
          * Creates a snapshot of listeners to avoid ConcurrentModificationException.
          * Each listener is called in a try/catch to ensure all listeners receive the event.
@@ -127,6 +172,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     public override fun onServiceConnected() {
         super.onServiceConnected()
         isConnected = true
+        instance = this
         Log.d(TAG, "Accessibility service connected, listeners=${eventListeners.size}")
 
         // Broadcast so that ExpoAccessibilityServiceModule (or any listener) can
@@ -140,12 +186,14 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
 
     public override fun onUnbind(intent: android.content.Intent?): Boolean {
         isConnected = false
+        instance = null
         Log.d(TAG, "Accessibility service unbound (permission revoked or service disabled)")
         return super.onUnbind(intent)
     }
 
     public override fun onDestroy() {
         isConnected = false
+        instance = null
         super.onDestroy()
         Log.d(TAG, "Accessibility service destroyed, listeners=${eventListeners.size}")
     }
