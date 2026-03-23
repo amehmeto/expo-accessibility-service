@@ -110,6 +110,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
 
                 val packageName = rootNode.packageName?.toString()
                 val className = rootNode.className?.toString() ?: "android.view.View"
+                // recycle() is deprecated on API 34+ (no-op); safe to call on older APIs
                 rootNode.recycle()
 
                 if (packageName.isNullOrEmpty()) {
