@@ -5,6 +5,7 @@ import {
   setServiceClassName,
   getDetectedServices,
   addAccessibilityEventListener,
+  emitCurrentForegroundApp,
   AccessibilityEvent,
 } from '../index'
 
@@ -18,6 +19,7 @@ jest.mock('../ExpoAccessibilityServiceModule', () => ({
   askPermission: jest.fn(),
   setServiceClassName: jest.fn(),
   getDetectedServices: jest.fn(),
+  emitCurrentForegroundApp: jest.fn(),
   addListener: jest.fn(() => mockSubscription),
 }))
 
@@ -146,6 +148,33 @@ describe('ExpoAccessibilityService', () => {
 
       await expect(getDetectedServices()).rejects.toThrow('Manifest read error')
       expect(mockModule.getDetectedServices).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('emitCurrentForegroundApp', () => {
+    it('should call native module emitCurrentForegroundApp', async () => {
+      mockModule.emitCurrentForegroundApp.mockResolvedValue(undefined)
+
+      await emitCurrentForegroundApp()
+
+      expect(mockModule.emitCurrentForegroundApp).toHaveBeenCalledTimes(1)
+    })
+
+    it('should propagate errors from native module', async () => {
+      const error = new Error('Service not connected')
+      mockModule.emitCurrentForegroundApp.mockRejectedValue(error)
+
+      await expect(emitCurrentForegroundApp()).rejects.toThrow(
+        'Service not connected',
+      )
+    })
+
+    it('should resolve without returning a value', async () => {
+      mockModule.emitCurrentForegroundApp.mockResolvedValue(undefined)
+
+      const result = await emitCurrentForegroundApp()
+
+      expect(result).toBeUndefined()
     })
   })
 

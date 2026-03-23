@@ -31,7 +31,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             private set
 
         /**
-         * Weak reference to the current service instance.
+         * Reference to the current service instance, nulled on unbind/destroy.
          * Used by emitCurrentForegroundApp() to access rootInActiveWindow.
          */
         @Volatile
