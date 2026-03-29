@@ -41,8 +41,7 @@
       "Bash(gh release:*)",
       "Skill(ralph-wiggum:cancel-ralph)",
       "Bash(SKIP_E2E_CHECK=true git push)",
-      "Bash(git rm:*)",
-      "Bash(git:*)"
+      "Bash(git rm:*)"
     ],
     "deny": [
       "Bash(git branch -D:*)",
