@@ -1,6 +1,8 @@
 package expo.modules.accessibilityservice
 
+import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log
 import java.util.Collections
@@ -61,6 +63,31 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          * Return the number of currently registered listeners.
          */
         fun getListenerCount(): Int = eventListeners.size
+
+        /**
+         * Check if this accessibility service is enabled in Android system settings.
+         * Unlike [isConnected], this checks the actual system state and survives
+         * process death — it reads from Settings.Secure which is persisted by Android.
+         *
+         * Use this when you need ground-truth after a process restart where
+         * the in-memory [isConnected] flag was lost.
+         */
+        fun isServiceEnabledInSystem(context: Context): Boolean {
+            return try {
+                val enabledServices = Settings.Secure.getString(
+                    context.contentResolver,
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                ) ?: return false
+
+                val serviceId = "${context.packageName}/${AccessibilityService::class.java.canonicalName}"
+                val enabled = enabledServices.split(":").any { it.trim() == serviceId }
+                Log.d(TAG, "isServiceEnabledInSystem: $enabled (looking for $serviceId)")
+                enabled
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to check system accessibility state: ${e.message}", e)
+                false
+            }
+        }
 
         /**
          * Reset all state for testing purposes.
