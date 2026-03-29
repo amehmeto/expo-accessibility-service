@@ -8,7 +8,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
 import android.provider.Settings
-import android.text.TextUtils
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
@@ -128,19 +127,7 @@ class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListe
 
   private fun isAccessibilityServiceEnabled(): Boolean {
     val serviceNames = getServiceNamesToCheck()
-    
-    val enabledServices = Settings.Secure.getString(
-      context.contentResolver,
-      Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-    )
-    
-    return if (TextUtils.isEmpty(enabledServices)) {
-      false
-    } else {
-      serviceNames.any { serviceName ->
-        enabledServices.contains(serviceName)
-      }
-    }
+    return AccessibilityService.isAnyServiceEnabled(context, serviceNames)
   }
 
   private fun getServiceNamesToCheck(): List<String> {

@@ -1,6 +1,8 @@
 package expo.modules.accessibilityservice
 
+import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log
 import java.util.Collections
@@ -61,6 +63,45 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          * Return the number of currently registered listeners.
          */
         fun getListenerCount(): Int = eventListeners.size
+
+        /**
+         * Check whether any of the given service IDs appear in the system's
+         * enabled accessibility services list (Settings.Secure).
+         *
+         * Shared by [isServiceEnabledInSystem] and [ExpoAccessibilityServiceModule]
+         * so that the matching logic (colon-delimited, exact match) is in one place.
+         */
+        internal fun isAnyServiceEnabled(context: Context, serviceIds: List<String>): Boolean {
+            val enabledServices = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            )
+
+            if (enabledServices.isNullOrBlank()) return false
+
+            val enabledSet = enabledServices.split(":").map { it.trim() }.toSet()
+            return serviceIds.any { it in enabledSet }
+        }
+
+        /**
+         * Check if this accessibility service is enabled in Android system settings.
+         * Unlike [isConnected], this checks the actual system state and survives
+         * process death — it reads from Settings.Secure which is persisted by Android.
+         *
+         * Use this when you need ground-truth after a process restart where
+         * the in-memory [isConnected] flag was lost.
+         *
+         * Returns `false` if the check itself fails (e.g. SecurityException).
+         */
+        fun isServiceEnabledInSystem(context: Context): Boolean {
+            return try {
+                val serviceId = "${context.packageName}/${AccessibilityService::class.java.canonicalName}"
+                isAnyServiceEnabled(context, listOf(serviceId))
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to check system accessibility state: ${e.message}", e)
+                false
+            }
+        }
 
         /**
          * Reset all state for testing purposes.

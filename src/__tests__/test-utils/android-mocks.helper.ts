@@ -164,7 +164,8 @@ export function createAndroidNativeMock(
         return false
       }
 
-      return enabledServices.includes(serviceName)
+      const serviceList = enabledServices.split(':').map((s) => s.trim())
+      return serviceList.includes(serviceName)
     }),
 
     askPermission: jest.fn().mockImplementation(async () => {
