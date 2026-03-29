@@ -75,7 +75,9 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             val enabledServices = Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: return false
+            )
+
+            if (enabledServices.isNullOrBlank()) return false
 
             val enabledSet = enabledServices.split(":").map { it.trim() }.toSet()
             return serviceIds.any { it in enabledSet }
@@ -88,6 +90,8 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          *
          * Use this when you need ground-truth after a process restart where
          * the in-memory [isConnected] flag was lost.
+         *
+         * Returns `false` if the check itself fails (e.g. SecurityException).
          */
         fun isServiceEnabledInSystem(context: Context): Boolean {
             return try {
