@@ -65,6 +65,23 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         fun getListenerCount(): Int = eventListeners.size
 
         /**
+         * Check whether any of the given service IDs appear in the system's
+         * enabled accessibility services list (Settings.Secure).
+         *
+         * Shared by [isServiceEnabledInSystem] and [ExpoAccessibilityServiceModule]
+         * so that the matching logic (colon-delimited, exact match) is in one place.
+         */
+        internal fun isAnyServiceEnabled(context: Context, serviceIds: List<String>): Boolean {
+            val enabledServices = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: return false
+
+            val enabledSet = enabledServices.split(":").map { it.trim() }.toSet()
+            return serviceIds.any { it in enabledSet }
+        }
+
+        /**
          * Check if this accessibility service is enabled in Android system settings.
          * Unlike [isConnected], this checks the actual system state and survives
          * process death — it reads from Settings.Secure which is persisted by Android.
@@ -74,15 +91,8 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          */
         fun isServiceEnabledInSystem(context: Context): Boolean {
             return try {
-                val enabledServices = Settings.Secure.getString(
-                    context.contentResolver,
-                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-                ) ?: return false
-
                 val serviceId = "${context.packageName}/${AccessibilityService::class.java.canonicalName}"
-                val enabled = enabledServices.split(":").any { it.trim() == serviceId }
-                Log.d(TAG, "isServiceEnabledInSystem: $enabled (looking for $serviceId)")
-                enabled
+                isAnyServiceEnabled(context, listOf(serviceId))
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to check system accessibility state: ${e.message}", e)
                 false
