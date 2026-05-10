@@ -204,17 +204,20 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
                 Log.d(TAG, "App changed: package=$packageName, class=$className")
 
                 try {
-                    val breadcrumb = Breadcrumb().apply {
-                        category = "accessibility"
-                        message = "event received"
-                        setData("eventType", event.eventType)
-                        setData("packageName", packageName)
-                        setData("receivedAtMillis", timestamp)
-                        setData("listenerCount", eventListeners.size)
+                    if (Sentry.isEnabled()) {
+                        Sentry.addBreadcrumb(
+                            Breadcrumb().apply {
+                                category = "accessibility"
+                                message = "event received"
+                                setData("eventType", event.eventType)
+                                setData("packageName", packageName)
+                                setData("receivedAtMillis", timestamp)
+                                setData("listenerCount", eventListeners.size)
+                            }
+                        )
                     }
-                    Sentry.addBreadcrumb(breadcrumb)
                 } catch (_: Throwable) {
-                    // Sentry may not be initialized (standalone module, tests)
+                    // Sentry class may be absent at runtime (compileOnly, host app didn't bundle it)
                 }
 
                 notifyListeners(packageName, className, timestamp)
