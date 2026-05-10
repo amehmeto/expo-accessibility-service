@@ -5,6 +5,8 @@ import android.content.Intent
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log
+import io.sentry.Breadcrumb
+import io.sentry.Sentry
 import java.util.Collections
 
 class AccessibilityService : android.accessibilityservice.AccessibilityService() {
@@ -200,6 +202,20 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
                 val timestamp = System.currentTimeMillis()
 
                 Log.d(TAG, "App changed: package=$packageName, class=$className")
+
+                try {
+                    val breadcrumb = Breadcrumb().apply {
+                        category = "accessibility"
+                        message = "event received"
+                        setData("eventType", event.eventType)
+                        setData("packageName", packageName)
+                        setData("receivedAtMillis", timestamp)
+                        setData("listenerCount", eventListeners.size)
+                    }
+                    Sentry.addBreadcrumb(breadcrumb)
+                } catch (_: Throwable) {
+                    // Sentry may not be initialized (standalone module, tests)
+                }
 
                 notifyListeners(packageName, className, timestamp)
             }
