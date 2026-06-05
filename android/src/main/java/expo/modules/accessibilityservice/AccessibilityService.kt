@@ -106,6 +106,13 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
 
         /**
+         * Pure matcher: is [expectedId] present in the system's bound-services id list?
+         * Extracted so the id-matching contract is unit-testable without the framework.
+         */
+        internal fun matchesBoundService(boundServiceIds: List<String>, expectedId: String): Boolean =
+            expectedId in boundServiceIds
+
+        /**
          * Reset all state for testing purposes.
          */
         fun resetForTesting() {
