@@ -14,6 +14,10 @@ export function isServiceRunning(): Promise<boolean> {
   return ExpoAccessibilityServiceModule.isServiceRunning()
 }
 
+export function openAppDetailsSettings(): Promise<void> {
+  return ExpoAccessibilityServiceModule.openAppDetailsSettings()
+}
+
 export function askPermission(): Promise<void> {
   return ExpoAccessibilityServiceModule.askPermission()
 }

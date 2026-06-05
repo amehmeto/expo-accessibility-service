@@ -5,6 +5,7 @@ import { ExpoAccessibilityServiceModuleEvents } from './ExpoAccessibilityService
 declare class ExpoAccessibilityServiceModule extends NativeModule<ExpoAccessibilityServiceModuleEvents> {
   isEnabled: () => Promise<boolean>
   isServiceRunning: () => Promise<boolean>
+  openAppDetailsSettings: () => Promise<void>
   askPermission: () => Promise<void>
   setServiceClassName: (className: string) => Promise<void>
   getDetectedServices: () => Promise<string[]>
