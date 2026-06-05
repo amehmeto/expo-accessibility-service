@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.util.Log
 import io.sentry.Breadcrumb
 import io.sentry.Sentry
@@ -111,6 +113,32 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          */
         internal fun matchesBoundService(boundServiceIds: List<String>, expectedId: String): Boolean =
             expectedId in boundServiceIds
+
+        /**
+         * Whether this accessibility service is actually BOUND and running — not merely
+         * listed in Settings.Secure. The in-process signal ([isConnected] + [instance]) is
+         * strongest (the service runs in this app's process); the system bound-services
+         * view ([AccessibilityManager.getEnabledAccessibilityServiceList]) corroborates it
+         * and is correct even after a process restart that cleared the in-process statics.
+         *
+         * Combined via OR: bound if EITHER says so. Distinguishes "enabled in settings but
+         * not bound" (Restricted Settings / ECM on a sideloaded install, or an unbind after
+         * process death) from genuinely running.
+         */
+        fun isServiceRunning(context: Context): Boolean {
+            if (isConnected && instance != null) return true
+            return try {
+                val expectedId = "${context.packageName}/${AccessibilityService::class.java.canonicalName}"
+                val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+                val boundIds = manager
+                    .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                    .map { it.id }
+                matchesBoundService(boundIds, expectedId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to check if accessibility service is running: ${e.message}", e)
+                false
+            }
+        }
 
         /**
          * Reset all state for testing purposes.

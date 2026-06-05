@@ -49,6 +49,10 @@ class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListe
       promise.resolve(isEnabled)
     }
 
+    AsyncFunction("isServiceRunning") { promise: Promise ->
+      promise.resolve(AccessibilityService.isServiceRunning(context))
+    }
+
     AsyncFunction("askPermission") { promise: Promise ->
       openAccessibilitySettings(promise)
     }

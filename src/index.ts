@@ -10,6 +10,10 @@ export function isEnabled(): Promise<boolean> {
   return ExpoAccessibilityServiceModule.isEnabled()
 }
 
+export function isServiceRunning(): Promise<boolean> {
+  return ExpoAccessibilityServiceModule.isServiceRunning()
+}
+
 export function askPermission(): Promise<void> {
   return ExpoAccessibilityServiceModule.askPermission()
 }
