@@ -6,6 +6,8 @@ import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import io.sentry.Breadcrumb
 import io.sentry.Sentry
@@ -166,42 +168,62 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
 
         fun getEventListener(): EventListener? = eventListeners.firstOrNull()
 
-        /**
-         * Emit the current foreground app as a synthetic accessibility event.
-         * Uses rootInActiveWindow to determine what app is currently on screen.
-         * This is useful when the service starts while an app is already in the foreground
-         * (no TYPE_WINDOW_STATE_CHANGED event fires for already-visible apps).
-         */
         fun emitCurrentForegroundApp() {
+            emitCurrentForegroundApp(attempt = 0)
+        }
+
+        private const val EMIT_MAX_ATTEMPTS = 3
+        private const val EMIT_RETRY_DELAY_MS = 150L
+
+        private fun emitCurrentForegroundApp(attempt: Int) {
             val service = instance
             if (service == null) {
                 Log.w(TAG, "emitCurrentForegroundApp: service instance not available")
                 return
             }
 
-            try {
-                val rootNode = service.rootInActiveWindow
-                if (rootNode == null) {
-                    Log.w(TAG, "emitCurrentForegroundApp: rootInActiveWindow is null")
-                    return
+            val resolved = resolveForegroundPackage(service)
+            if (resolved == null) {
+                if (attempt + 1 < EMIT_MAX_ATTEMPTS) {
+                    Log.w(TAG, "emitCurrentForegroundApp: no package (attempt ${attempt + 1}), retrying")
+                    Handler(Looper.getMainLooper()).postDelayed(
+                        { emitCurrentForegroundApp(attempt + 1) },
+                        EMIT_RETRY_DELAY_MS
+                    )
+                } else {
+                    Log.w(TAG, "emitCurrentForegroundApp: no package after $EMIT_MAX_ATTEMPTS attempts")
                 }
-
-                val packageName = rootNode.packageName?.toString()
-                val className = rootNode.className?.toString() ?: "android.view.View"
-                // recycle() is deprecated on API 34+ (no-op); safe to call on older APIs
-                rootNode.recycle()
-
-                if (packageName.isNullOrEmpty()) {
-                    Log.w(TAG, "emitCurrentForegroundApp: no package name from root node")
-                    return
-                }
-
-                val timestamp = System.currentTimeMillis()
-                Log.d(TAG, "emitCurrentForegroundApp: emitting $packageName")
-                notifyListeners(packageName, className, timestamp)
-            } catch (e: Exception) {
-                Log.e(TAG, "emitCurrentForegroundApp failed: ${e.message}", e)
+                return
             }
+
+            val timestamp = System.currentTimeMillis()
+            Log.d(TAG, "emitCurrentForegroundApp: emitting ${resolved.first}")
+            notifyListeners(resolved.first, resolved.second, timestamp)
+        }
+
+        /** Returns (packageName, className) of the active window, or null. */
+        private fun resolveForegroundPackage(service: AccessibilityService): Pair<String, String>? {
+            try {
+                val root = service.rootInActiveWindow
+                if (root != null) {
+                    val pkg = root.packageName?.toString()
+                    val cls = root.className?.toString() ?: "android.view.View"
+                    root.recycle()
+                    if (!pkg.isNullOrEmpty()) return pkg to cls
+                }
+                // Fallback: scan interactive windows for the active application window's root.
+                for (window in service.windows) {
+                    if (!window.isActive) continue
+                    val wRoot = window.root ?: continue
+                    val pkg = wRoot.packageName?.toString()
+                    val cls = wRoot.className?.toString() ?: "android.view.View"
+                    wRoot.recycle()
+                    if (!pkg.isNullOrEmpty()) return pkg to cls
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "resolveForegroundPackage failed: ${e.message}", e)
+            }
+            return null
         }
 
         /**
