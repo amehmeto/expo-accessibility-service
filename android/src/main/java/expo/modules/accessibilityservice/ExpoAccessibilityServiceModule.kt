@@ -49,8 +49,16 @@ class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListe
       promise.resolve(isEnabled)
     }
 
+    AsyncFunction("isServiceRunning") { promise: Promise ->
+      promise.resolve(AccessibilityService.isServiceRunning(context))
+    }
+
     AsyncFunction("askPermission") { promise: Promise ->
       openAccessibilitySettings(promise)
+    }
+
+    AsyncFunction("openAppDetailsSettings") { promise: Promise ->
+      openAppDetailsSettings(promise)
     }
 
     AsyncFunction("setServiceClassName") { className: String, promise: Promise ->
@@ -185,6 +193,21 @@ class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListe
       promise.resolve()
     } catch (e: Exception) {
       promise.reject("ERROR", "Could not open accessibility settings: ${e.message}", e)
+    }
+  }
+
+  private fun openAppDetailsSettings(promise: Promise) {
+    try {
+      val intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        android.net.Uri.fromParts("package", context.packageName, null)
+      ).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+      }
+      context.startActivity(intent)
+      promise.resolve()
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Could not open app details settings: ${e.message}", e)
     }
   }
 }
