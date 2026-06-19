@@ -18,10 +18,56 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     // Callback interface for event listeners
     interface EventListener {
         fun onAppChanged(packageName: String, className: String, timestamp: Long)
+
+        /**
+         * Called when the URL bar (omnibox) text of a supported browser changes.
+         *
+         * [rawText] is the unnormalized text shown in the address bar. Consumers are
+         * responsible for normalization (lowercase, strip scheme/www/path/query) and
+         * eTLD+1 resolution — this layer only surfaces the raw browser URL signal.
+         *
+         * Default no-op so existing listeners that only care about app changes do
+         * not need to implement it.
+         */
+        fun onUrlBarChanged(packageName: String, rawText: String, timestamp: Long) {}
     }
 
     companion object {
         private const val TAG = "AccessibilityService"
+
+        /**
+         * Browser packages whose URL bar we watch for website blocking, mapped to the
+         * resource id of their address-bar text field. Restricting work to these
+         * packages keeps the hot path off every other app's content events.
+         *
+         * Known V1 limitation: other browsers (Brave, Firefox, Opera, …) are absent
+         * and therefore not blocked.
+         */
+        val BROWSER_URL_BAR_VIEW_IDS: Map<String, String> = mapOf(
+            "com.android.chrome" to "com.android.chrome:id/url_bar",
+            "com.sec.android.app.sbrowser" to "com.sec.android.app.sbrowser:id/location_bar_edit_text"
+        )
+
+        /** Whether [packageName] is a browser we extract URL-bar text from. */
+        fun isSupportedBrowser(packageName: String?): Boolean =
+            packageName != null && BROWSER_URL_BAR_VIEW_IDS.containsKey(packageName)
+
+        /**
+         * Decide what URL-bar text (if any) to emit for a browser content/text event.
+         *
+         * Pure and string-only so it is unit-testable without a real
+         * AccessibilityNodeInfo. Returns the trimmed text to emit, or null when the
+         * event should be ignored: a non-browser package, a field that is not the
+         * browser's URL bar, or empty/blank text (new tab, hint placeholder).
+         */
+        fun resolveUrlBarText(packageName: String?, sourceViewId: String?, text: String?): String? {
+            if (!isSupportedBrowser(packageName)) return null
+            val expectedViewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return null
+            if (sourceViewId != expectedViewId) return null
+            val trimmed = text?.trim()
+            if (trimmed.isNullOrEmpty()) return null
+            return trimmed
+        }
 
         /**
          * Broadcast action sent when the accessibility service (re)connects.
@@ -245,40 +291,108 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
                 }
             }
         }
+
+        /**
+         * Notify all registered listeners of a browser URL-bar change.
+         * Mirrors [notifyListeners]: snapshot to avoid ConcurrentModificationException,
+         * each listener guarded so one failure does not starve the others.
+         */
+        internal fun notifyUrlBarListeners(packageName: String, rawText: String, timestamp: Long) {
+            val listeners = synchronized(eventListeners) { eventListeners.toList() }
+            listeners.forEach { listener ->
+                try {
+                    listener.onUrlBarChanged(packageName, rawText, timestamp)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error notifying url-bar listener: ${e.message}", e)
+                }
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
-        // Only handle window state changed events (foreground app changes)
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val packageName = event.packageName?.toString()
-            val className = event.className?.toString()
+        when (event.eventType) {
+            // Foreground app changes (used by app blocking).
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleWindowStateChanged(event)
 
-            if (!packageName.isNullOrEmpty() && !className.isNullOrEmpty()) {
-                val timestamp = System.currentTimeMillis()
+            // In-tab navigation does not fire a window-state change; it surfaces as a
+            // text/content change. Used by website blocking, filtered to browsers.
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleBrowserContentChanged(event)
+        }
+    }
 
-                Log.d(TAG, "App changed: package=$packageName, class=$className")
+    private fun handleWindowStateChanged(event: AccessibilityEvent) {
+        val packageName = event.packageName?.toString()
+        val className = event.className?.toString()
 
-                try {
-                    if (Sentry.isEnabled()) {
-                        Sentry.addBreadcrumb(
-                            Breadcrumb().apply {
-                                category = "accessibility"
-                                message = "event received"
-                                setData("eventType", event.eventType)
-                                setData("packageName", packageName)
-                                setData("receivedAtMillis", timestamp)
-                                setData("listenerCount", eventListeners.size)
-                            }
-                        )
-                    }
-                } catch (_: Throwable) {
-                    // Sentry class may be absent at runtime (compileOnly, host app didn't bundle it)
+        if (!packageName.isNullOrEmpty() && !className.isNullOrEmpty()) {
+            val timestamp = System.currentTimeMillis()
+
+            Log.d(TAG, "App changed: package=$packageName, class=$className")
+
+            try {
+                if (Sentry.isEnabled()) {
+                    Sentry.addBreadcrumb(
+                        Breadcrumb().apply {
+                            category = "accessibility"
+                            message = "event received"
+                            setData("eventType", event.eventType)
+                            setData("packageName", packageName)
+                            setData("receivedAtMillis", timestamp)
+                            setData("listenerCount", eventListeners.size)
+                        }
+                    )
                 }
-
-                notifyListeners(packageName, className, timestamp)
+            } catch (_: Throwable) {
+                // Sentry class may be absent at runtime (compileOnly, host app didn't bundle it)
             }
+
+            notifyListeners(packageName, className, timestamp)
+        }
+    }
+
+    private fun handleBrowserContentChanged(event: AccessibilityEvent) {
+        val packageName = event.packageName?.toString()
+        if (!isSupportedBrowser(packageName)) return
+
+        // Prefer the text already on the event when the changed node IS the URL bar,
+        // so we avoid a fresh node query on every content event. Fall back to a
+        // view-id lookup on the active window's root otherwise.
+        val source = event.source
+        val resolved = try {
+            val eventText = event.text?.joinToString("")?.takeIf { it.isNotEmpty() }
+            resolveUrlBarText(packageName, source?.viewIdResourceName, eventText)
+                ?: queryUrlBarFromRoot(packageName!!)
+        } finally {
+            // recycle() is deprecated/no-op on API 34+ but safe on older APIs
+            source?.recycle()
+        }
+
+        if (resolved != null) {
+            Log.d(TAG, "URL bar changed in $packageName")
+            notifyUrlBarListeners(packageName!!, resolved, System.currentTimeMillis())
+        }
+    }
+
+    /**
+     * Read the URL-bar text by querying the active window's root for the browser's
+     * known address-bar view id. Heavily guarded: any failure or missing node yields
+     * null rather than crashing the service.
+     */
+    private fun queryUrlBarFromRoot(packageName: String): String? {
+        return try {
+            val viewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return null
+            val root = rootInActiveWindow ?: return null
+            val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+            val text = nodes?.firstOrNull()?.text?.toString()?.trim()
+            nodes?.forEach { it.recycle() }
+            root.recycle()
+            if (text.isNullOrEmpty()) null else text
+        } catch (e: Exception) {
+            Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
+            null
         }
     }
 
