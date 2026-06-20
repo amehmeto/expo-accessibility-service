@@ -40,12 +40,39 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          * resource id of their address-bar text field. Restricting work to these
          * packages keeps the hot path off every other app's content events.
          *
-         * Known V1 limitation: other browsers (Brave, Firefox, Opera, …) are absent
-         * and therefore not blocked.
+         * Grouped by engine: Chromium forks expose the omnibox as `<package>:id/url_bar`,
+         * the Opera family uses `url_field`, and Firefox/GeckoView (Mozilla Android
+         * Components) uses `mozac_browser_toolbar_url_view`. An unsupported browser (or a
+         * wrong id) simply isn't blocked rather than misbehaving.
          */
         val BROWSER_URL_BAR_VIEW_IDS: Map<String, String> = mapOf(
+            // Chromium-based: "<package>:id/url_bar"
             "com.android.chrome" to "com.android.chrome:id/url_bar",
-            "com.sec.android.app.sbrowser" to "com.sec.android.app.sbrowser:id/location_bar_edit_text"
+            "com.chrome.beta" to "com.chrome.beta:id/url_bar",
+            "com.chrome.dev" to "com.chrome.dev:id/url_bar",
+            "com.brave.browser" to "com.brave.browser:id/url_bar",
+            "com.brave.browser_beta" to "com.brave.browser_beta:id/url_bar",
+            "com.microsoft.emmx" to "com.microsoft.emmx:id/url_bar", // Edge
+            "com.vivaldi.browser" to "com.vivaldi.browser:id/url_bar",
+            "com.kiwibrowser.browser" to "com.kiwibrowser.browser:id/url_bar",
+            // Samsung Internet
+            "com.sec.android.app.sbrowser" to "com.sec.android.app.sbrowser:id/location_bar_edit_text",
+            // Opera family: "<package>:id/url_field"
+            "com.opera.browser" to "com.opera.browser:id/url_field",
+            "com.opera.browser.beta" to "com.opera.browser.beta:id/url_field",
+            "com.opera.mini.native" to "com.opera.mini.native:id/url_field",
+            "com.opera.gx" to "com.opera.gx:id/url_field",
+            // Firefox / GeckoView (Mozilla Android Components toolbar)
+            "org.mozilla.firefox" to "org.mozilla.firefox:id/mozac_browser_toolbar_url_view",
+            "org.mozilla.firefox_beta" to "org.mozilla.firefox_beta:id/mozac_browser_toolbar_url_view",
+            "org.mozilla.fenix" to "org.mozilla.fenix:id/mozac_browser_toolbar_url_view",
+            "org.mozilla.focus" to "org.mozilla.focus:id/mozac_browser_toolbar_url_view",
+            "org.mozilla.klar" to "org.mozilla.klar:id/mozac_browser_toolbar_url_view",
+            // DuckDuckGo
+            "com.duckduckgo.mobile.android" to "com.duckduckgo.mobile.android:id/omnibarTextInput",
+            // Best-effort (ids unverified on-device; wrong id ⇒ just not blocked there)
+            "com.UCMobile.intl" to "com.UCMobile.intl:id/address_bar",
+            "com.mi.globalbrowser" to "com.mi.globalbrowser:id/url",
         )
 
         /** Whether [packageName] is a browser we extract URL-bar text from. */

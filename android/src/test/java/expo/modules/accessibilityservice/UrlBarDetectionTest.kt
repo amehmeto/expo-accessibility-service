@@ -20,6 +20,10 @@ class UrlBarDetectionTest {
     private val chromeUrlBar = "com.android.chrome:id/url_bar"
     private val samsung = "com.sec.android.app.sbrowser"
     private val samsungUrlBar = "com.sec.android.app.sbrowser:id/location_bar_edit_text"
+    private val opera = "com.opera.browser"
+    private val operaUrlBar = "com.opera.browser:id/url_field"
+    private val firefox = "org.mozilla.firefox"
+    private val firefoxUrlBar = "org.mozilla.firefox:id/mozac_browser_toolbar_url_view"
 
     private lateinit var listener: AccessibilityService.EventListener
 
@@ -35,12 +39,35 @@ class UrlBarDetectionTest {
     }
 
     @Test
-    fun `isSupportedBrowser recognizes Chrome and Samsung Internet only`() {
-        assertTrue(AccessibilityService.isSupportedBrowser(chrome))
-        assertTrue(AccessibilityService.isSupportedBrowser(samsung))
-        assertFalse(AccessibilityService.isSupportedBrowser("org.mozilla.firefox"))
-        assertFalse(AccessibilityService.isSupportedBrowser("com.brave.browser"))
+    fun `isSupportedBrowser recognizes the popular Android browsers`() {
+        // Chromium family, Opera family, Firefox/Gecko, Samsung, DuckDuckGo
+        for (pkg in listOf(
+            chrome,
+            samsung,
+            opera,
+            firefox,
+            "com.brave.browser",
+            "com.microsoft.emmx",
+            "com.vivaldi.browser",
+            "com.opera.gx",
+            "org.mozilla.focus",
+            "com.duckduckgo.mobile.android",
+        )) {
+            assertTrue("expected $pkg to be supported", AccessibilityService.isSupportedBrowser(pkg))
+        }
+    }
+
+    @Test
+    fun `isSupportedBrowser rejects non-browsers and null`() {
+        assertFalse(AccessibilityService.isSupportedBrowser("com.whatsapp"))
+        assertFalse(AccessibilityService.isSupportedBrowser("com.google.android.youtube"))
         assertFalse(AccessibilityService.isSupportedBrowser(null))
+    }
+
+    @Test
+    fun `resolveUrlBarText resolves Opera and Firefox url bars`() {
+        assertEquals("facebook.com", AccessibilityService.resolveUrlBarText(opera, operaUrlBar, "facebook.com"))
+        assertEquals("reddit.com", AccessibilityService.resolveUrlBarText(firefox, firefoxUrlBar, "reddit.com"))
     }
 
     @Test
@@ -58,8 +85,8 @@ class UrlBarDetectionTest {
     @Test
     fun `resolveUrlBarText ignores non-browser packages`() {
         val result = AccessibilityService.resolveUrlBarText(
-            "org.mozilla.firefox",
-            "org.mozilla.firefox:id/url_bar_title",
+            "com.whatsapp",
+            "com.whatsapp:id/search_src_text",
             "facebook.com"
         )
         assertNull(result)
