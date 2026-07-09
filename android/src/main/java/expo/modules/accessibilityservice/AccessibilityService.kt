@@ -216,11 +216,35 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
 
         /**
+         * Simulate the system Back button through the connected service.
+         *
+         * Website blocking uses this to pop the browser off a blocked page — and to
+         * close a freshly-opened blocked tab — instead of covering it with a full-screen
+         * overlay. It is an OS-level action, so it behaves identically across browsers
+         * (Chrome, Opera, Firefox, …) rather than depending on any browser's tab UI.
+         *
+         * Returns false (no-op) when the service is not currently connected.
+         */
+        fun goBack(): Boolean =
+            instance?.performGlobalAction(
+                android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+            ) ?: false
+
+        /**
          * Reset all state for testing purposes.
          */
         fun resetForTesting() {
             eventListeners.clear()
             isConnected = false
+            instance = null
+        }
+
+        /**
+         * Inject a service instance for testing global-action calls ([goBack]) without a
+         * running service. Production sets [instance] only via onServiceConnected/onUnbind.
+         */
+        fun setInstanceForTesting(service: AccessibilityService?) {
+            instance = service
         }
 
         /**
