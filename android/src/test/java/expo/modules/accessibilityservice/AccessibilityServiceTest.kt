@@ -7,6 +7,7 @@ import org.junit.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.whenever
 
 class AccessibilityServiceTest {
 
@@ -200,5 +201,28 @@ class AccessibilityServiceTest {
 
         // Verify listener1 still received the event despite throwingListener throwing
         verify(listener1).onAppChanged(eq(packageName), eq(className), eq(timestamp))
+    }
+
+    @Test
+    fun `goBack returns false when no service instance is connected`() {
+        AccessibilityService.resetForTesting()
+        assertFalse("goBack should be a no-op without a live service", AccessibilityService.goBack())
+    }
+
+    @Test
+    fun `goBack performs the BACK global action on the connected service`() {
+        val service = mock<AccessibilityService>()
+        whenever(
+            service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        ).thenReturn(true)
+        AccessibilityService.setInstanceForTesting(service)
+
+        val result = AccessibilityService.goBack()
+
+        assertTrue("goBack should report the global action succeeded", result)
+        verify(service).performGlobalAction(
+            android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+        )
+        AccessibilityService.resetForTesting()
     }
 }
