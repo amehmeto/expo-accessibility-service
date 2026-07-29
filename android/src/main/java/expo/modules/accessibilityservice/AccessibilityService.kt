@@ -5,6 +5,7 @@ import android.content.Intent
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Handler
 import android.os.Looper
@@ -19,74 +20,39 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     interface EventListener {
         fun onAppChanged(packageName: String, className: String, timestamp: Long)
 
-        /**
-         * Called when the URL bar (omnibox) text of a supported browser changes.
-         *
-         * [rawText] is the unnormalized text shown in the address bar. Consumers are
-         * responsible for normalization (lowercase, strip scheme/www/path/query) and
-         * eTLD+1 resolution — this layer only surfaces the raw browser URL signal.
-         *
-         * Default no-op so existing listeners that only care about app changes do
-         * not need to implement it.
-         */
         fun onUrlBarChanged(packageName: String, rawText: String, timestamp: Long) {}
     }
 
     companion object {
         private const val TAG = "AccessibilityService"
 
-        /**
-         * Browser packages whose URL bar we watch for website blocking, mapped to the
-         * resource id of their address-bar text field. Restricting work to these
-         * packages keeps the hot path off every other app's content events.
-         *
-         * Grouped by engine: Chromium forks expose the omnibox as `<package>:id/url_bar`,
-         * the Opera family uses `url_field`, and Firefox/GeckoView (Mozilla Android
-         * Components) uses `mozac_browser_toolbar_url_view`. An unsupported browser (or a
-         * wrong id) simply isn't blocked rather than misbehaving.
-         */
         val BROWSER_URL_BAR_VIEW_IDS: Map<String, String> = mapOf(
-            // Chromium-based: "<package>:id/url_bar"
             "com.android.chrome" to "com.android.chrome:id/url_bar",
             "com.chrome.beta" to "com.chrome.beta:id/url_bar",
             "com.chrome.dev" to "com.chrome.dev:id/url_bar",
             "com.brave.browser" to "com.brave.browser:id/url_bar",
             "com.brave.browser_beta" to "com.brave.browser_beta:id/url_bar",
-            "com.microsoft.emmx" to "com.microsoft.emmx:id/url_bar", // Edge
+            "com.microsoft.emmx" to "com.microsoft.emmx:id/url_bar",
             "com.vivaldi.browser" to "com.vivaldi.browser:id/url_bar",
             "com.kiwibrowser.browser" to "com.kiwibrowser.browser:id/url_bar",
-            // Samsung Internet
             "com.sec.android.app.sbrowser" to "com.sec.android.app.sbrowser:id/location_bar_edit_text",
-            // Opera family: "<package>:id/url_field"
             "com.opera.browser" to "com.opera.browser:id/url_field",
             "com.opera.browser.beta" to "com.opera.browser.beta:id/url_field",
             "com.opera.mini.native" to "com.opera.mini.native:id/url_field",
             "com.opera.gx" to "com.opera.gx:id/url_field",
-            // Firefox / GeckoView (Mozilla Android Components toolbar)
             "org.mozilla.firefox" to "org.mozilla.firefox:id/mozac_browser_toolbar_url_view",
             "org.mozilla.firefox_beta" to "org.mozilla.firefox_beta:id/mozac_browser_toolbar_url_view",
             "org.mozilla.fenix" to "org.mozilla.fenix:id/mozac_browser_toolbar_url_view",
             "org.mozilla.focus" to "org.mozilla.focus:id/mozac_browser_toolbar_url_view",
             "org.mozilla.klar" to "org.mozilla.klar:id/mozac_browser_toolbar_url_view",
-            // DuckDuckGo
             "com.duckduckgo.mobile.android" to "com.duckduckgo.mobile.android:id/omnibarTextInput",
-            // Best-effort (ids unverified on-device; wrong id ⇒ just not blocked there)
             "com.UCMobile.intl" to "com.UCMobile.intl:id/address_bar",
             "com.mi.globalbrowser" to "com.mi.globalbrowser:id/url",
         )
 
-        /** Whether [packageName] is a browser we extract URL-bar text from. */
         fun isSupportedBrowser(packageName: String?): Boolean =
             packageName != null && BROWSER_URL_BAR_VIEW_IDS.containsKey(packageName)
 
-        /**
-         * Decide what URL-bar text (if any) to emit for a browser content/text event.
-         *
-         * Pure and string-only so it is unit-testable without a real
-         * AccessibilityNodeInfo. Returns the trimmed text to emit, or null when the
-         * event should be ignored: a non-browser package, a field that is not the
-         * browser's URL bar, or empty/blank text (new tab, hint placeholder).
-         */
         fun resolveUrlBarText(packageName: String?, sourceViewId: String?, text: String?): String? {
             if (!isSupportedBrowser(packageName)) return null
             val expectedViewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return null
@@ -215,16 +181,6 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             }
         }
 
-        /**
-         * Simulate the system Back button through the connected service.
-         *
-         * Website blocking uses this to pop the browser off a blocked page — and to
-         * close a freshly-opened blocked tab — instead of covering it with a full-screen
-         * overlay. It is an OS-level action, so it behaves identically across browsers
-         * (Chrome, Opera, Firefox, …) rather than depending on any browser's tab UI.
-         *
-         * Returns false (no-op) when the service is not currently connected.
-         */
         fun goBack(): Boolean =
             instance?.performGlobalAction(
                 android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
@@ -239,10 +195,6 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             instance = null
         }
 
-        /**
-         * Inject a service instance for testing global-action calls ([goBack]) without a
-         * running service. Production sets [instance] only via onServiceConnected/onUnbind.
-         */
         fun setInstanceForTesting(service: AccessibilityService?) {
             instance = service
         }
@@ -271,6 +223,8 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
 
         private const val EMIT_MAX_ATTEMPTS = 3
         private const val EMIT_RETRY_DELAY_MS = 150L
+
+        private const val URL_BAR_QUERY_MIN_INTERVAL_MS = 250L
 
         private fun emitCurrentForegroundApp(attempt: Int) {
             val service = instance
@@ -329,52 +283,45 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          * Each listener is called in a try/catch to ensure all listeners receive the event.
          */
         internal fun notifyListeners(packageName: String, className: String, timestamp: Long) {
-            // Create snapshot to avoid ConcurrentModificationException during iteration
-            val listeners = synchronized(eventListeners) { eventListeners.toList() }
-            if (listeners.isEmpty()) {
+            if (eventListeners.isEmpty()) {
                 Log.w(TAG, "notifyListeners: no listeners registered, event dropped for $packageName")
             }
+            forEachListener { it.onAppChanged(packageName, className, timestamp) }
+        }
+
+        internal fun notifyUrlBarListeners(packageName: String, rawText: String, timestamp: Long) {
+            forEachListener { it.onUrlBarChanged(packageName, rawText, timestamp) }
+        }
+
+        private inline fun forEachListener(action: (EventListener) -> Unit) {
+            val listeners = synchronized(eventListeners) { eventListeners.toList() }
             listeners.forEach { listener ->
                 try {
-                    listener.onAppChanged(packageName, className, timestamp)
+                    action(listener)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error notifying listener: ${e.message}", e)
                 }
             }
         }
-
-        /**
-         * Notify all registered listeners of a browser URL-bar change.
-         * Mirrors [notifyListeners]: snapshot to avoid ConcurrentModificationException,
-         * each listener guarded so one failure does not starve the others.
-         */
-        internal fun notifyUrlBarListeners(packageName: String, rawText: String, timestamp: Long) {
-            val listeners = synchronized(eventListeners) { eventListeners.toList() }
-            listeners.forEach { listener ->
-                try {
-                    listener.onUrlBarChanged(packageName, rawText, timestamp)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error notifying url-bar listener: ${e.message}", e)
-                }
-            }
-        }
     }
+
+    private var lastUrlBarQueryAtMs: Long = 0L
+    private var lastEmittedUrlKey: String? = null
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
         when (event.eventType) {
-            // Foreground app changes (used by app blocking).
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleWindowStateChanged(event)
 
-            // In-tab navigation does not fire a window-state change; it surfaces as a
-            // text/content change. Used by website blocking, filtered to browsers.
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleBrowserContentChanged(event)
         }
     }
 
     private fun handleWindowStateChanged(event: AccessibilityEvent) {
+        lastEmittedUrlKey = null
+
         val packageName = event.packageName?.toString()
         val className = event.className?.toString()
 
@@ -405,45 +352,47 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     }
 
     private fun handleBrowserContentChanged(event: AccessibilityEvent) {
-        val packageName = event.packageName?.toString()
-        if (!isSupportedBrowser(packageName)) return
+        val packageName = event.packageName?.toString() ?: return
+        val expectedViewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return
 
-        // Prefer the text already on the event when the changed node IS the URL bar,
-        // so we avoid a fresh node query on every content event. Fall back to a
-        // view-id lookup on the active window's root otherwise.
         val source = event.source
         val resolved = try {
-            val eventText = event.text?.joinToString("")?.takeIf { it.isNotEmpty() }
-            resolveUrlBarText(packageName, source?.viewIdResourceName, eventText)
-                ?: queryUrlBarFromRoot(packageName!!)
+            resolveUrlBarText(packageName, source?.viewIdResourceName, source?.text?.toString())
+                ?: queryUrlBarFromRootThrottled(expectedViewId)
         } finally {
-            // recycle() is deprecated/no-op on API 34+ but safe on older APIs
             source?.recycle()
         }
 
         if (resolved != null) {
-            Log.d(TAG, "URL bar changed in $packageName")
-            notifyUrlBarListeners(packageName!!, resolved, System.currentTimeMillis())
+            val key = "$packageName $resolved"
+            if (key != lastEmittedUrlKey) {
+                lastEmittedUrlKey = key
+                Log.d(TAG, "URL bar changed in $packageName")
+                notifyUrlBarListeners(packageName, resolved, System.currentTimeMillis())
+            }
         }
     }
 
-    /**
-     * Read the URL-bar text by querying the active window's root for the browser's
-     * known address-bar view id. Heavily guarded: any failure or missing node yields
-     * null rather than crashing the service.
-     */
-    private fun queryUrlBarFromRoot(packageName: String): String? {
+    private fun queryUrlBarFromRootThrottled(viewId: String): String? {
+        val now = System.currentTimeMillis()
+        if (now - lastUrlBarQueryAtMs < URL_BAR_QUERY_MIN_INTERVAL_MS) return null
+        lastUrlBarQueryAtMs = now
+        return queryUrlBarFromRoot(viewId)
+    }
+
+    private fun queryUrlBarFromRoot(viewId: String): String? {
+        val root = rootInActiveWindow ?: return null
+        var nodes: List<AccessibilityNodeInfo>? = null
         return try {
-            val viewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return null
-            val root = rootInActiveWindow ?: return null
-            val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+            nodes = root.findAccessibilityNodeInfosByViewId(viewId)
             val text = nodes?.firstOrNull()?.text?.toString()?.trim()
-            nodes?.forEach { it.recycle() }
-            root.recycle()
             if (text.isNullOrEmpty()) null else text
         } catch (e: Exception) {
             Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
             null
+        } finally {
+            nodes?.forEach { it.recycle() }
+            root.recycle()
         }
     }
 

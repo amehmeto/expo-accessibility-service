@@ -28,7 +28,7 @@ class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListe
     Name("ExpoAccessibilityService")
 
     // Define events that can be emitted to JavaScript
-    Events("onAccessibilityEvent")
+    Events("onAccessibilityEvent", "onUrlBarChanged")
 
     // Register this module as an event listener when module is created
     OnCreate {
@@ -94,6 +94,19 @@ class ExpoAccessibilityServiceModule : Module(), AccessibilityService.EventListe
       sendEvent("onAccessibilityEvent", eventData)
     } catch (e: Exception) {
       Log.e(TAG, "Error emitting accessibility event", e)
+    }
+  }
+
+  override fun onUrlBarChanged(packageName: String, rawText: String, timestamp: Long) {
+    try {
+      val eventData = mapOf(
+        "packageName" to packageName,
+        "rawText" to rawText,
+        "timestamp" to timestamp
+      )
+      sendEvent("onUrlBarChanged", eventData)
+    } catch (e: Exception) {
+      Log.e(TAG, "Error emitting url-bar event", e)
     }
   }
 

@@ -9,11 +9,6 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
 
-/**
- * Unit tests for the browser URL-bar detection added for website blocking (#19).
- * Exercises the pure resolver (browser filtering + null-safety) and the
- * listener notification path, without needing a real AccessibilityNodeInfo.
- */
 class UrlBarDetectionTest {
 
     private val chrome = "com.android.chrome"
@@ -40,7 +35,6 @@ class UrlBarDetectionTest {
 
     @Test
     fun `isSupportedBrowser recognizes the popular Android browsers`() {
-        // Chromium family, Opera family, Firefox/Gecko, Samsung, DuckDuckGo
         for (pkg in listOf(
             chrome,
             samsung,
@@ -94,7 +88,6 @@ class UrlBarDetectionTest {
 
     @Test
     fun `resolveUrlBarText ignores fields that are not the url bar`() {
-        // e.g. a content text view inside the page, not the omnibox
         val result = AccessibilityService.resolveUrlBarText(chrome, "com.android.chrome:id/title_bar", "facebook.com")
         assertNull(result)
     }
