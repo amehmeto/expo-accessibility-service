@@ -5,6 +5,7 @@ import android.content.Intent
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Handler
 import android.os.Looper
@@ -18,10 +19,48 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     // Callback interface for event listeners
     interface EventListener {
         fun onAppChanged(packageName: String, className: String, timestamp: Long)
+
+        fun onUrlBarChanged(packageName: String, rawText: String, timestamp: Long) {}
     }
 
     companion object {
         private const val TAG = "AccessibilityService"
+
+        val BROWSER_URL_BAR_VIEW_IDS: Map<String, String> = mapOf(
+            "com.android.chrome" to "com.android.chrome:id/url_bar",
+            "com.chrome.beta" to "com.chrome.beta:id/url_bar",
+            "com.chrome.dev" to "com.chrome.dev:id/url_bar",
+            "com.brave.browser" to "com.brave.browser:id/url_bar",
+            "com.brave.browser_beta" to "com.brave.browser_beta:id/url_bar",
+            "com.microsoft.emmx" to "com.microsoft.emmx:id/url_bar",
+            "com.vivaldi.browser" to "com.vivaldi.browser:id/url_bar",
+            "com.kiwibrowser.browser" to "com.kiwibrowser.browser:id/url_bar",
+            "com.sec.android.app.sbrowser" to "com.sec.android.app.sbrowser:id/location_bar_edit_text",
+            "com.opera.browser" to "com.opera.browser:id/url_field",
+            "com.opera.browser.beta" to "com.opera.browser.beta:id/url_field",
+            "com.opera.mini.native" to "com.opera.mini.native:id/url_field",
+            "com.opera.gx" to "com.opera.gx:id/url_field",
+            "org.mozilla.firefox" to "org.mozilla.firefox:id/mozac_browser_toolbar_url_view",
+            "org.mozilla.firefox_beta" to "org.mozilla.firefox_beta:id/mozac_browser_toolbar_url_view",
+            "org.mozilla.fenix" to "org.mozilla.fenix:id/mozac_browser_toolbar_url_view",
+            "org.mozilla.focus" to "org.mozilla.focus:id/mozac_browser_toolbar_url_view",
+            "org.mozilla.klar" to "org.mozilla.klar:id/mozac_browser_toolbar_url_view",
+            "com.duckduckgo.mobile.android" to "com.duckduckgo.mobile.android:id/omnibarTextInput",
+            "com.UCMobile.intl" to "com.UCMobile.intl:id/address_bar",
+            "com.mi.globalbrowser" to "com.mi.globalbrowser:id/url",
+        )
+
+        fun isSupportedBrowser(packageName: String?): Boolean =
+            packageName != null && BROWSER_URL_BAR_VIEW_IDS.containsKey(packageName)
+
+        fun resolveUrlBarText(packageName: String?, sourceViewId: String?, text: String?): String? {
+            if (!isSupportedBrowser(packageName)) return null
+            val expectedViewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return null
+            if (sourceViewId != expectedViewId) return null
+            val trimmed = text?.trim()
+            if (trimmed.isNullOrEmpty()) return null
+            return trimmed
+        }
 
         /**
          * Broadcast action sent when the accessibility service (re)connects.
@@ -142,12 +181,22 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             }
         }
 
+        fun goBack(): Boolean =
+            instance?.performGlobalAction(
+                android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+            ) ?: false
+
         /**
          * Reset all state for testing purposes.
          */
         fun resetForTesting() {
             eventListeners.clear()
             isConnected = false
+            instance = null
+        }
+
+        fun setInstanceForTesting(service: AccessibilityService?) {
+            instance = service
         }
 
         /**
@@ -232,14 +281,21 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          * Each listener is called in a try/catch to ensure all listeners receive the event.
          */
         internal fun notifyListeners(packageName: String, className: String, timestamp: Long) {
-            // Create snapshot to avoid ConcurrentModificationException during iteration
-            val listeners = synchronized(eventListeners) { eventListeners.toList() }
-            if (listeners.isEmpty()) {
+            if (eventListeners.isEmpty()) {
                 Log.w(TAG, "notifyListeners: no listeners registered, event dropped for $packageName")
             }
+            forEachListener { it.onAppChanged(packageName, className, timestamp) }
+        }
+
+        internal fun notifyUrlBarListeners(packageName: String, rawText: String, timestamp: Long) {
+            forEachListener { it.onUrlBarChanged(packageName, rawText, timestamp) }
+        }
+
+        private inline fun forEachListener(action: (EventListener) -> Unit) {
+            val listeners = synchronized(eventListeners) { eventListeners.toList() }
             listeners.forEach { listener ->
                 try {
-                    listener.onAppChanged(packageName, className, timestamp)
+                    action(listener)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error notifying listener: ${e.message}", e)
                 }
@@ -247,38 +303,85 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
     }
 
+    private val urlBarGate = UrlBarEmissionGate()
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
-        // Only handle window state changed events (foreground app changes)
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val packageName = event.packageName?.toString()
-            val className = event.className?.toString()
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleWindowStateChanged(event)
 
-            if (!packageName.isNullOrEmpty() && !className.isNullOrEmpty()) {
-                val timestamp = System.currentTimeMillis()
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleBrowserContentChanged(event)
+        }
+    }
 
-                Log.d(TAG, "App changed: package=$packageName, class=$className")
+    private fun handleWindowStateChanged(event: AccessibilityEvent) {
+        urlBarGate.forgetLastEmission()
 
-                try {
-                    if (Sentry.isEnabled()) {
-                        Sentry.addBreadcrumb(
-                            Breadcrumb().apply {
-                                category = "accessibility"
-                                message = "event received"
-                                setData("eventType", event.eventType)
-                                setData("packageName", packageName)
-                                setData("receivedAtMillis", timestamp)
-                                setData("listenerCount", eventListeners.size)
-                            }
-                        )
-                    }
-                } catch (_: Throwable) {
-                    // Sentry class may be absent at runtime (compileOnly, host app didn't bundle it)
+        val packageName = event.packageName?.toString()
+        val className = event.className?.toString()
+
+        if (!packageName.isNullOrEmpty() && !className.isNullOrEmpty()) {
+            val timestamp = System.currentTimeMillis()
+
+            Log.d(TAG, "App changed: package=$packageName, class=$className")
+
+            try {
+                if (Sentry.isEnabled()) {
+                    Sentry.addBreadcrumb(
+                        Breadcrumb().apply {
+                            category = "accessibility"
+                            message = "event received"
+                            setData("eventType", event.eventType)
+                            setData("packageName", packageName)
+                            setData("receivedAtMillis", timestamp)
+                            setData("listenerCount", eventListeners.size)
+                        }
+                    )
                 }
-
-                notifyListeners(packageName, className, timestamp)
+            } catch (_: Throwable) {
+                // Sentry class may be absent at runtime (compileOnly, host app didn't bundle it)
             }
+
+            notifyListeners(packageName, className, timestamp)
+        }
+    }
+
+    private fun handleBrowserContentChanged(event: AccessibilityEvent) {
+        val packageName = event.packageName?.toString() ?: return
+        val expectedViewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return
+
+        val source = event.source
+        val resolved = try {
+            resolveUrlBarText(packageName, source?.viewIdResourceName, source?.text?.toString())
+                ?: queryUrlBarFromRootThrottled(expectedViewId)
+        } finally {
+            source?.recycle()
+        }
+
+        if (resolved != null && urlBarGate.tryClaimEmission(packageName, resolved)) {
+            Log.d(TAG, "URL bar changed in $packageName")
+            notifyUrlBarListeners(packageName, resolved, System.currentTimeMillis())
+        }
+    }
+
+    private fun queryUrlBarFromRootThrottled(viewId: String): String? =
+        if (urlBarGate.tryAcquireQuerySlot()) queryUrlBarFromRoot(viewId) else null
+
+    private fun queryUrlBarFromRoot(viewId: String): String? {
+        val root = rootInActiveWindow ?: return null
+        var nodes: List<AccessibilityNodeInfo>? = null
+        return try {
+            nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+            val text = nodes?.firstOrNull()?.text?.toString()?.trim()
+            if (text.isNullOrEmpty()) null else text
+        } catch (e: Exception) {
+            Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
+            null
+        } finally {
+            nodes?.forEach { it.recycle() }
+            root.recycle()
         }
     }
 
