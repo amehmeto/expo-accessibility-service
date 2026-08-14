@@ -1,0 +1,58 @@
+name: Sweep PR pre-releases
+
+# ci.yml publishes one pre-release per PR build (tag `pr-<number>-<sha>`).
+# Without a sweep they accumulate forever. This workflow applies the retention
+# policy: keep the stable releases, keep the latest build of each open PR,
+# drop everything else — release and git tag together.
+#
+# Dry run: set the repository variable PRERELEASE_SWEEP_DRY_RUN to `true`, or
+# tick the `dry_run` input on a manual run. The job then only logs what it
+# would delete.
+
+on:
+  schedule:
+    # once a day, 03:17 UTC
+    - cron: '17 3 * * *'
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Log what would be deleted, delete nothing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: sweep-pr-prereleases
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Sweep PR pre-releases
+    runs-on: ubuntu-latest
+    # a pull_request run from a fork gets a read-only token: it could not delete
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout the default branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Sweep
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run || vars.PRERELEASE_SWEEP_DRY_RUN || 'false' }}
+        run: |
+          if [ ! -f .github/scripts/sweep-pr-prereleases.sh ]; then
+            echo "Sweep script absent from the default branch — nothing to do."
+            exit 0
+          fi
+          bash .github/scripts/sweep-pr-prereleases.sh
