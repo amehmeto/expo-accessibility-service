@@ -113,7 +113,7 @@ jobs:
         with:
           name: ${{ env.APK_ARTIFACT_NAME }}
           path: example/android/app/build/outputs/apk/release/expo-accessibility-service.apk
-          retention-days: 7
+          retention-days: 3
           overwrite: true
 
       - name: Create PR release
