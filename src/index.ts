@@ -3,7 +3,6 @@
 import {
   AccessibilityEvent,
   AccessibilityEventSubscription,
-  UrlBarEvent,
 } from './ExpoAccessibilityService.types'
 import ExpoAccessibilityServiceModule from './ExpoAccessibilityServiceModule'
 
@@ -75,27 +74,6 @@ export function addAccessibilityEventListener(
 }
 
 /**
- * Add a listener for browser URL-bar change events.
- * The listener is called whenever the address-bar text of a supported browser
- * changes. `rawText` is unnormalized; consumers handle normalization/eTLD+1.
- *
- * @param listener - Callback receiving the packageName, rawText, and timestamp
- * @returns A subscription object with a remove() method to unsubscribe
- */
-export function addUrlBarChangeListener(
-  listener: (event: UrlBarEvent) => void,
-): AccessibilityEventSubscription {
-  const subscription = ExpoAccessibilityServiceModule.addListener(
-    'onUrlBarChanged',
-    listener,
-  )
-
-  return {
-    remove: () => subscription.remove(),
-  }
-}
-
-/**
  * Emit the current foreground app as a synthetic accessibility event.
  * Uses rootInActiveWindow to determine what app is currently on screen.
  *
@@ -118,4 +96,4 @@ export function emitCurrentForegroundApp(): Promise<void> {
 }
 
 // Re-export types for convenience
-export type { AccessibilityEvent, AccessibilityEventSubscription, UrlBarEvent }
+export type { AccessibilityEvent, AccessibilityEventSubscription }
