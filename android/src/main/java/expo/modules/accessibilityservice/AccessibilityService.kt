@@ -224,8 +224,6 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         private const val EMIT_MAX_ATTEMPTS = 3
         private const val EMIT_RETRY_DELAY_MS = 150L
 
-        private const val URL_BAR_QUERY_MIN_INTERVAL_MS = 250L
-
         private fun emitCurrentForegroundApp(attempt: Int) {
             val service = instance
             if (service == null) {
@@ -305,8 +303,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
     }
 
-    private var lastUrlBarQueryAtMs: Long = 0L
-    private var lastEmittedUrlKey: String? = null
+    private val urlBarGate = UrlBarEmissionGate()
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -320,7 +317,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     }
 
     private fun handleWindowStateChanged(event: AccessibilityEvent) {
-        lastEmittedUrlKey = null
+        urlBarGate.forgetLastEmission()
 
         val packageName = event.packageName?.toString()
         val className = event.className?.toString()
@@ -363,22 +360,14 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             source?.recycle()
         }
 
-        if (resolved != null) {
-            val key = "$packageName $resolved"
-            if (key != lastEmittedUrlKey) {
-                lastEmittedUrlKey = key
-                Log.d(TAG, "URL bar changed in $packageName")
-                notifyUrlBarListeners(packageName, resolved, System.currentTimeMillis())
-            }
+        if (resolved != null && urlBarGate.tryClaimEmission(packageName, resolved)) {
+            Log.d(TAG, "URL bar changed in $packageName")
+            notifyUrlBarListeners(packageName, resolved, System.currentTimeMillis())
         }
     }
 
-    private fun queryUrlBarFromRootThrottled(viewId: String): String? {
-        val now = System.currentTimeMillis()
-        if (now - lastUrlBarQueryAtMs < URL_BAR_QUERY_MIN_INTERVAL_MS) return null
-        lastUrlBarQueryAtMs = now
-        return queryUrlBarFromRoot(viewId)
-    }
+    private fun queryUrlBarFromRootThrottled(viewId: String): String? =
+        if (urlBarGate.tryAcquireQuerySlot()) queryUrlBarFromRoot(viewId) else null
 
     private fun queryUrlBarFromRoot(viewId: String): String? {
         val root = rootInActiveWindow ?: return null
