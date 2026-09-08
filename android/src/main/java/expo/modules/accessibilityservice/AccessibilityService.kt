@@ -21,6 +21,36 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         fun onAppChanged(packageName: String, className: String, timestamp: Long)
 
         fun onUrlBarChanged(packageName: String, rawText: String, timestamp: Long) {}
+
+        /**
+         * As [onUrlBarChanged], plus whether the URL bar held INPUT FOCUS when the
+         * event fired — that is, whether the user was editing the address rather than
+         * looking at the one the page is on.
+         *
+         * The distinction is not cosmetic for a consumer that acts on a match. The URL
+         * bar emits an event per keystroke and completes "fa" into "facebook.com"
+         * inline, so a consumer reading text alone cannot tell a destination from a
+         * suggestion under the user's fingers, and can only guess from the shape and
+         * timing of the sequence. [isEditing] answers it outright, and the transition
+         * from true to false on the same text is the navigation itself.
+         *
+         * Read from the URL-bar node's `isFocused`. False is NOT proof the user is not
+         * typing: a browser whose address bar is not a focusable text node, or whose
+         * node is unreadable at that instant, reports false throughout. Treat true as
+         * authoritative ("do not act") and keep a fallback for browsers that never
+         * report true.
+         *
+         * The service calls THIS overload; the default forwards to the three-argument
+         * one, so listeners written against that keep working unchanged.
+         */
+        fun onUrlBarChanged(
+            packageName: String,
+            rawText: String,
+            timestamp: Long,
+            isEditing: Boolean,
+        ) {
+            onUrlBarChanged(packageName, rawText, timestamp)
+        }
     }
 
     companion object {
@@ -287,8 +317,17 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             forEachListener { it.onAppChanged(packageName, className, timestamp) }
         }
 
-        internal fun notifyUrlBarListeners(packageName: String, rawText: String, timestamp: Long) {
-            forEachListener { it.onUrlBarChanged(packageName, rawText, timestamp) }
+        /**
+         * [isEditing] defaults to false so existing three-argument call sites stay
+         * valid; the service always passes the real reading.
+         */
+        internal fun notifyUrlBarListeners(
+            packageName: String,
+            rawText: String,
+            timestamp: Long,
+            isEditing: Boolean = false,
+        ) {
+            forEachListener { it.onUrlBarChanged(packageName, rawText, timestamp, isEditing) }
         }
 
         private inline fun forEachListener(action: (EventListener) -> Unit) {
@@ -353,29 +392,41 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         val expectedViewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return
 
         val source = event.source
-        val resolved = try {
+        val reading = try {
             resolveUrlBarText(packageName, source?.viewIdResourceName, source?.text?.toString())
+                // The node that changed IS the URL bar, so its own focus state answers
+                // whether the user is typing in it. Read before the recycle below.
+                ?.let { UrlBarReading(it, source?.isFocused == true) }
                 ?: queryUrlBarFromRootThrottled(expectedViewId)
         } finally {
             source?.recycle()
         }
 
-        if (resolved != null && urlBarGate.tryClaimEmission(packageName, resolved)) {
-            Log.d(TAG, "URL bar changed in $packageName")
-            notifyUrlBarListeners(packageName, resolved, System.currentTimeMillis())
+        if (reading != null && urlBarGate.tryClaimEmission(packageName, reading.text, reading.isEditing)) {
+            Log.d(TAG, "URL bar changed in $packageName (editing=${reading.isEditing})")
+            notifyUrlBarListeners(
+                packageName,
+                reading.text,
+                System.currentTimeMillis(),
+                reading.isEditing,
+            )
         }
     }
 
-    private fun queryUrlBarFromRootThrottled(viewId: String): String? =
+    /** The URL bar's text, and whether the user was editing it — see [EventListener]. */
+    private data class UrlBarReading(val text: String, val isEditing: Boolean)
+
+    private fun queryUrlBarFromRootThrottled(viewId: String): UrlBarReading? =
         if (urlBarGate.tryAcquireQuerySlot()) queryUrlBarFromRoot(viewId) else null
 
-    private fun queryUrlBarFromRoot(viewId: String): String? {
+    private fun queryUrlBarFromRoot(viewId: String): UrlBarReading? {
         val root = rootInActiveWindow ?: return null
         var nodes: List<AccessibilityNodeInfo>? = null
         return try {
             nodes = root.findAccessibilityNodeInfosByViewId(viewId)
-            val text = nodes?.firstOrNull()?.text?.toString()?.trim()
-            if (text.isNullOrEmpty()) null else text
+            val urlBar = nodes?.firstOrNull()
+            val text = urlBar?.text?.toString()?.trim()
+            if (text.isNullOrEmpty()) null else UrlBarReading(text, urlBar.isFocused)
         } catch (e: Exception) {
             Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
             null

@@ -110,7 +110,33 @@ class UrlBarDetectionTest {
 
         AccessibilityService.notifyUrlBarListeners(chrome, "facebook.com", 123L)
 
-        verify(listener).onUrlBarChanged(eq(chrome), eq("facebook.com"), eq(123L))
+        verify(listener).onUrlBarChanged(eq(chrome), eq("facebook.com"), eq(123L), eq(false))
+    }
+
+    @Test
+    fun `notifyUrlBarListeners forwards whether the user was editing the address`() {
+        AccessibilityService.addEventListener(listener)
+
+        AccessibilityService.notifyUrlBarListeners(chrome, "facebook.com", 123L, isEditing = true)
+
+        verify(listener).onUrlBarChanged(eq(chrome), eq("facebook.com"), eq(123L), eq(true))
+    }
+
+    @Test
+    fun `a listener written against the three-argument callback still receives events`() {
+        // The overload exists so that adding isEditing did not break existing consumers.
+        val received = mutableListOf<Triple<String, String, Long>>()
+        val legacyListener = object : AccessibilityService.EventListener {
+            override fun onAppChanged(packageName: String, className: String, timestamp: Long) {}
+            override fun onUrlBarChanged(packageName: String, rawText: String, timestamp: Long) {
+                received.add(Triple(packageName, rawText, timestamp))
+            }
+        }
+        AccessibilityService.addEventListener(legacyListener)
+
+        AccessibilityService.notifyUrlBarListeners(chrome, "facebook.com", 123L, isEditing = true)
+
+        assertEquals(listOf(Triple(chrome, "facebook.com", 123L)), received)
     }
 
     @Test
