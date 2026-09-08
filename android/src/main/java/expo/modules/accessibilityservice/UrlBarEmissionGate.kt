@@ -15,8 +15,16 @@ package expo.modules.accessibilityservice
  *   One full-tree query per [minQueryIntervalMs] at most. The cheap path — the
  *   changed node already being the URL bar — never goes through here.
  * - **Emission de-duplication.** The same URL in the same browser is announced
- *   once. A window change clears it, because leaving and returning to a page is
- *   a new navigation for the consumer.
+ *   once — for as long as the user's relation to it does not change. A window
+ *   change clears it, because leaving and returning to a page is a new
+ *   navigation for the consumer.
+ *
+ * Whether the URL bar was being edited is part of what makes an emission
+ * distinct, not detail carried alongside it. The same address seen first with
+ * the URL bar focused and then without it IS the navigation the user just
+ * committed — the one moment a consumer most needs to hear about. Keying dedup
+ * on the text alone swallowed exactly that event, leaving "typed it and pressed
+ * Enter" indistinguishable from "typed it and changed my mind".
  */
 internal class UrlBarEmissionGate(
     private val minQueryIntervalMs: Long = DEFAULT_MIN_QUERY_INTERVAL_MS,
@@ -27,9 +35,9 @@ internal class UrlBarEmissionGate(
     }
 
     private var lastQueryAtMs: Long? = null
-    // A pair, not a concatenation: no separator to pick, and no way for
-    // (package, url) to collide with a different (package, url).
-    private var lastEmitted: Pair<String, String>? = null
+    // A triple, not a concatenation: no separator to pick, and no way for
+    // (package, url, editing) to collide with a different (package, url, editing).
+    private var lastEmitted: Triple<String, String, Boolean>? = null
 
     /**
      * Takes the next full-tree query slot when the pacing interval has elapsed.
@@ -44,11 +52,12 @@ internal class UrlBarEmissionGate(
     }
 
     /**
-     * Claims the right to announce [text] for [packageName], unless it is the
-     * value already announced. Consumes the claim when it returns true.
+     * Claims the right to announce [text] for [packageName], read while the URL bar
+     * was ([isEditing]) or was not being edited, unless that exact reading is the one
+     * already announced. Consumes the claim when it returns true.
      */
-    fun tryClaimEmission(packageName: String, text: String): Boolean {
-        val claim = packageName to text
+    fun tryClaimEmission(packageName: String, text: String, isEditing: Boolean = false): Boolean {
+        val claim = Triple(packageName, text, isEditing)
         if (claim == lastEmitted) return false
         lastEmitted = claim
         return true

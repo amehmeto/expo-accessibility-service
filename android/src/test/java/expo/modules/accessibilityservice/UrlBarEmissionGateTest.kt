@@ -118,14 +118,41 @@ class UrlBarEmissionGateTest {
     }
 
     @Test
-    fun `two pairs that would collide once concatenated are told apart`() {
+    fun `two readings that would collide once concatenated are told apart`() {
         val gate = gate()
 
-        // Guards the pair against ever being flattened into one string:
+        // Guards the triple against ever being flattened into one string:
         // "com.android.chrome" + "x.com" would then read the same as
         // "com.android.chromex" + ".com".
         assertTrue(gate.tryClaimEmission("com.android.chrome", "x.com"))
         assertTrue(gate.tryClaimEmission("com.android.chromex", ".com"))
+    }
+
+    @Test
+    fun `the same address is announced again once the user leaves the URL bar`() {
+        val gate = gate()
+
+        // Typed, completed inline, then entered: the text never changes, so keying on
+        // it alone swallowed the navigation itself.
+        assertTrue(gate.tryClaimEmission(chrome, "facebook.com", isEditing = true))
+        assertFalse(gate.tryClaimEmission(chrome, "facebook.com", isEditing = true))
+        assertTrue(gate.tryClaimEmission(chrome, "facebook.com", isEditing = false))
+    }
+
+    @Test
+    fun `the loaded page redrawing its address is still announced once`() {
+        val gate = gate()
+
+        assertTrue(gate.tryClaimEmission(chrome, "facebook.com", isEditing = false))
+        assertFalse(gate.tryClaimEmission(chrome, "facebook.com", isEditing = false))
+    }
+
+    @Test
+    fun `going back to the URL bar on the same address is announced`() {
+        val gate = gate()
+
+        assertTrue(gate.tryClaimEmission(chrome, "facebook.com", isEditing = false))
+        assertTrue(gate.tryClaimEmission(chrome, "facebook.com", isEditing = true))
     }
 
     // ── the two rules are independent ────────────────────────────────────────
