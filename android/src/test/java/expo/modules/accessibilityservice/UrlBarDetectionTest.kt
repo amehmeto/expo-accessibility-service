@@ -98,6 +98,17 @@ class UrlBarDetectionTest {
     }
 
     @Test
+    fun `a candidate that already carries a package keeps it`() {
+        // A rebranded fork can answer to the upstream resource package. Deriving the
+        // prefix from the running package would make such an entry dead on arrival, so
+        // a candidate containing ':' is taken as already qualified.
+        val ids = AccessibilityService.BROWSER_URL_BAR_FIELD_IDS.entries.first()
+        val qualified = AccessibilityService.urlBarViewIds(ids.key)
+        assertTrue(qualified.all { it.contains(":id/") })
+        assertTrue(qualified.none { it.startsWith("${ids.key}:id/${ids.key}") })
+    }
+
+    @Test
     fun `view ids are qualified with the browser package`() {
         assertEquals(
             listOf("com.sec.android.app.sbrowser:id/location_bar_edit_text"),

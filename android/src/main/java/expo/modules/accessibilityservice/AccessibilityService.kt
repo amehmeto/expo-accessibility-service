@@ -123,11 +123,26 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             "com.amazon.cloud9" to listOf("url"),
         )
 
+        /**
+         * The fully-qualified candidates per package, built once.
+         *
+         * Once, because [handleBrowserContentChanged] runs on the accessibility thread
+         * for every content event a browser fires — several a second — and rebuilding
+         * a list of strings there was pure allocation on the hottest path we have.
+         *
+         * A field id containing ':' is taken as already qualified. A rebranded fork can
+         * keep the upstream resource package (a Fenix fork still answering to
+         * `org.mozilla.fenix:id/...`), and deriving the prefix from the running package
+         * would make such an entry dead on arrival.
+         */
+        private val QUALIFIED_URL_BAR_IDS: Map<String, List<String>> =
+            BROWSER_URL_BAR_FIELD_IDS.mapValues { (packageName, fieldIds) ->
+                fieldIds.map { if (it.contains(':')) it else "$packageName:id/$it" }
+            }
+
         /** The fully-qualified `package:id/field` candidates for [packageName]. */
-        fun urlBarViewIds(packageName: String?): List<String> {
-            val fieldIds = BROWSER_URL_BAR_FIELD_IDS[packageName] ?: return emptyList()
-            return fieldIds.map { "$packageName:id/$it" }
-        }
+        fun urlBarViewIds(packageName: String?): List<String> =
+            QUALIFIED_URL_BAR_IDS[packageName] ?: emptyList()
 
         fun isSupportedBrowser(packageName: String?): Boolean =
             packageName != null && BROWSER_URL_BAR_FIELD_IDS.containsKey(packageName)
@@ -161,6 +176,14 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          */
         @Volatile
         private var instance: AccessibilityService? = null
+
+        /**
+         * Companion-scoped on purpose: Android unbinds and rebinds this service without
+         * killing the process (the same reason [isConnected] and [instance] live here).
+         * Per-instance state would reset the counters and the backoff on every rebind,
+         * so "once, then quieter" would become "once per rebind".
+         */
+        private val blindSpotDetector = UrlBarBlindSpotDetector()
 
         // Thread-safe set of listeners (replaces single eventListener)
         private val eventListeners = Collections.synchronizedSet(mutableSetOf<EventListener>())
@@ -391,7 +414,6 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     }
 
     private val urlBarGate = UrlBarEmissionGate()
-    private val blindSpotDetector = UrlBarBlindSpotDetector()
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -442,18 +464,19 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         if (viewIds.isEmpty()) return
 
         val source = event.source
-        val reading = try {
+        val lookup = try {
             resolveUrlBarText(packageName, source?.viewIdResourceName, source?.text?.toString())
                 // The node that changed IS the URL bar, so its own focus state answers
                 // whether the user is typing in it. Read before the recycle below.
-                ?.let { UrlBarReading(it, source?.isFocused == true) }
+                ?.let { UrlBarLookup.Read(UrlBarReading(it, source?.isFocused == true)) }
                 ?: queryUrlBarFromRootThrottled(viewIds)
         } finally {
             source?.recycle()
         }
 
-        reportIfUrlBarNeverFound(packageName, resolved = reading != null)
+        reportIfUrlBarIdLooksStale(packageName, lookup)
 
+        val reading = (lookup as? UrlBarLookup.Read)?.reading
         if (reading != null && urlBarGate.tryClaimEmission(packageName, reading.text, reading.isEditing)) {
             Log.d(TAG, "URL bar changed in $packageName (editing=${reading.isEditing})")
             notifyUrlBarListeners(
@@ -469,12 +492,41 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     private data class UrlBarReading(val text: String, val isEditing: Boolean)
 
     /**
-     * Says so, once, when a browser we claim to support has never yielded its address
+     * What one attempt to read the URL bar came back with. Four outcomes, not two,
+     * because [UrlBarBlindSpotDetector] must not confuse them:
+     *
+     *  - [NotAttempted] — the query slot was refused or there was no window root. We
+     *    did not look, so this says nothing about whether the id is right.
+     *  - [NoNodeMatched] — we looked and no node carried any candidate id. THE miss.
+     *  - [Empty] — a node matched and held no text (blank new tab, mid-load). The id
+     *    is right; there is simply nothing to read.
+     *  - [Read] — a node matched and held an address.
+     */
+    private sealed interface UrlBarLookup {
+        object NotAttempted : UrlBarLookup
+        object NoNodeMatched : UrlBarLookup
+        object Empty : UrlBarLookup
+        data class Read(val reading: UrlBarReading) : UrlBarLookup
+    }
+
+    /**
+     * Says so when a browser we claim to support keeps failing to yield its address
      * bar — the only way a stale view id can surface, since it throws nothing and no
      * test can see it. See [UrlBarBlindSpotDetector].
+     *
+     * Only a lookup that actually happened and matched no node counts against the
+     * browser. Feeding it every event would count the ones where the query slot was
+     * refused (one tree query per 250ms, against events arriving many times a second)
+     * and the ones where a node was found holding no text — and a browser animating a
+     * blank new tab would be reported as broken.
      */
-    private fun reportIfUrlBarNeverFound(packageName: String, resolved: Boolean) {
-        if (!blindSpotDetector.onBrowserEvent(packageName, resolved)) return
+    private fun reportIfUrlBarIdLooksStale(packageName: String, lookup: UrlBarLookup) {
+        val verdict = when (lookup) {
+            UrlBarLookup.NotAttempted -> return
+            UrlBarLookup.NoNodeMatched -> false
+            UrlBarLookup.Empty, is UrlBarLookup.Read -> true
+        }
+        if (!blindSpotDetector.onLookup(packageName, foundNode = verdict)) return
         val ids = BROWSER_URL_BAR_FIELD_IDS[packageName]?.joinToString(", ").orEmpty()
         Log.w(TAG, "No URL bar found in $packageName after many events (tried: $ids)")
         try {
@@ -489,35 +541,57 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
     }
 
-    private fun queryUrlBarFromRootThrottled(viewIds: List<String>): UrlBarReading? =
-        if (urlBarGate.tryAcquireQuerySlot()) queryUrlBarFromRoot(viewIds) else null
+    private fun queryUrlBarFromRootThrottled(viewIds: List<String>): UrlBarLookup =
+        if (urlBarGate.tryAcquireQuerySlot()) {
+            queryUrlBarFromRoot(viewIds)
+        } else {
+            UrlBarLookup.NotAttempted
+        }
 
     /**
-     * Tries each candidate id in turn and takes the first that yields text — one tree
+     * Tries each candidate id in turn and takes the first node that matches — one tree
      * walk per candidate, but only inside the query slot the gate already paces, and
      * only until one hits. A browser with a single id costs exactly what it did before.
      */
-    private fun queryUrlBarFromRoot(viewIds: List<String>): UrlBarReading? {
-        val root = rootInActiveWindow ?: return null
+    private fun queryUrlBarFromRoot(viewIds: List<String>): UrlBarLookup {
+        val root = rootInActiveWindow ?: return UrlBarLookup.NotAttempted
         return try {
             viewIds.firstNotNullOfOrNull { viewId -> readUrlBar(root, viewId) }
-        } catch (e: Exception) {
-            Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
-            null
+                ?: UrlBarLookup.NoNodeMatched
         } finally {
             root.recycle()
         }
     }
 
-    private fun readUrlBar(root: AccessibilityNodeInfo, viewId: String): UrlBarReading? {
+    /**
+     * One candidate id, or null when no node carries it — null meaning "try the next
+     * one", which is why the failure handling lives HERE and not around the loop. A
+     * recycle that throws because the framework already reclaimed a node would
+     * otherwise abandon the remaining candidates, and the fallback id this whole shape
+     * exists for would never be reached.
+     */
+    private fun readUrlBar(root: AccessibilityNodeInfo, viewId: String): UrlBarLookup? {
         var nodes: List<AccessibilityNodeInfo>? = null
         return try {
             nodes = root.findAccessibilityNodeInfosByViewId(viewId)
-            val urlBar = nodes?.firstOrNull()
-            val text = urlBar?.text?.toString()?.trim()
-            if (text.isNullOrEmpty()) null else UrlBarReading(text, urlBar.isFocused)
+            val urlBar = nodes?.firstOrNull() ?: return null
+            val text = urlBar.text?.toString()?.trim()
+            if (text.isNullOrEmpty()) {
+                // The node is there, so the id is right — there is just nothing to read
+                // yet (blank new tab, mid-load). Not a miss.
+                UrlBarLookup.Empty
+            } else {
+                UrlBarLookup.Read(UrlBarReading(text, urlBar.isFocused))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "readUrlBar failed for $viewId: ${e.message}", e)
+            null
         } finally {
-            nodes?.forEach { it.recycle() }
+            try {
+                nodes?.forEach { it.recycle() }
+            } catch (e: Exception) {
+                Log.e(TAG, "recycling nodes for $viewId failed: ${e.message}", e)
+            }
         }
     }
 
