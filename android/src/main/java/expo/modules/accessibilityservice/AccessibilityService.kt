@@ -488,27 +488,6 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
     }
 
-    /** The URL bar's text, and whether the user was editing it — see [EventListener]. */
-    private data class UrlBarReading(val text: String, val isEditing: Boolean)
-
-    /**
-     * What one attempt to read the URL bar came back with. Four outcomes, not two,
-     * because [UrlBarBlindSpotDetector] must not confuse them:
-     *
-     *  - [NotAttempted] — the query slot was refused or there was no window root. We
-     *    did not look, so this says nothing about whether the id is right.
-     *  - [NoNodeMatched] — we looked and no node carried any candidate id. THE miss.
-     *  - [Empty] — a node matched and held no text (blank new tab, mid-load). The id
-     *    is right; there is simply nothing to read.
-     *  - [Read] — a node matched and held an address.
-     */
-    private sealed interface UrlBarLookup {
-        object NotAttempted : UrlBarLookup
-        object NoNodeMatched : UrlBarLookup
-        object Empty : UrlBarLookup
-        data class Read(val reading: UrlBarReading) : UrlBarLookup
-    }
-
     /**
      * Says so when a browser we claim to support keeps failing to yield its address
      * bar — the only way a stale view id can surface, since it throws nothing and no
@@ -549,50 +528,35 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
 
     /**
-     * Tries each candidate id in turn and takes the first node that matches — one tree
-     * walk per candidate, but only inside the query slot the gate already paces, and
-     * only until one hits. A browser with a single id costs exactly what it did before.
+     * Hands the active window to [UrlBarTreeReader], which owns the candidate loop and
+     * the per-node recycling. The root is this method's to recycle, once, whatever the
+     * reader does with what is inside it.
      */
     private fun queryUrlBarFromRoot(viewIds: List<String>): UrlBarLookup {
         val root = rootInActiveWindow ?: return UrlBarLookup.NotAttempted
         return try {
-            viewIds.firstNotNullOfOrNull { viewId -> readUrlBar(root, viewId) }
-                ?: UrlBarLookup.NoNodeMatched
+            UrlBarTreeReader.read(nodeSourceOf(root), viewIds)
+        } catch (e: Exception) {
+            Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
+            UrlBarLookup.NotAttempted
         } finally {
-            root.recycle()
+            try {
+                root.recycle()
+            } catch (e: Exception) {
+                Log.e(TAG, "recycling the window root failed: ${e.message}", e)
+            }
         }
     }
 
-    /**
-     * One candidate id, or null when no node carries it — null meaning "try the next
-     * one", which is why the failure handling lives HERE and not around the loop. A
-     * recycle that throws because the framework already reclaimed a node would
-     * otherwise abandon the remaining candidates, and the fallback id this whole shape
-     * exists for would never be reached.
-     */
-    private fun readUrlBar(root: AccessibilityNodeInfo, viewId: String): UrlBarLookup? {
-        var nodes: List<AccessibilityNodeInfo>? = null
-        return try {
-            nodes = root.findAccessibilityNodeInfosByViewId(viewId)
-            val urlBar = nodes?.firstOrNull() ?: return null
-            val text = urlBar.text?.toString()?.trim()
-            if (text.isNullOrEmpty()) {
-                // The node is there, so the id is right — there is just nothing to read
-                // yet (blank new tab, mid-load). Not a miss.
-                UrlBarLookup.Empty
-            } else {
-                UrlBarLookup.Read(UrlBarReading(text, urlBar.isFocused))
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "readUrlBar failed for $viewId: ${e.message}", e)
-            null
-        } finally {
-            try {
-                nodes?.forEach { it.recycle() }
-            } catch (e: Exception) {
-                Log.e(TAG, "recycling nodes for $viewId failed: ${e.message}", e)
-            }
-        }
+    /** Adapts one window's tree to the little the reader needs of it. */
+    private fun nodeSourceOf(root: AccessibilityNodeInfo) = UrlBarNodeSource { viewId ->
+        root.findAccessibilityNodeInfosByViewId(viewId)?.map { AndroidUrlBarNode(it) }
+    }
+
+    private class AndroidUrlBarNode(private val node: AccessibilityNodeInfo) : UrlBarNode {
+        override val text: String? get() = node.text?.toString()
+        override val isFocused: Boolean get() = node.isFocused
+        override fun recycle() = node.recycle()
     }
 
     override fun onInterrupt() {
