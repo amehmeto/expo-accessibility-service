@@ -59,6 +59,54 @@ class UrlBarDetectionTest {
     }
 
     @Test
+    fun `a browser with several known ids resolves any of them`() {
+        // Firefox Focus carries its own display_url on older builds and the Mozilla
+        // components id since the migration; both are on real devices right now.
+        // Keying on one would leave the other half unblocked, silently.
+        val focus = "org.mozilla.focus"
+        assertEquals(
+            "facebook.com",
+            AccessibilityService.resolveUrlBarText(
+                focus, "org.mozilla.focus:id/display_url", "facebook.com",
+            ),
+        )
+        assertEquals(
+            "facebook.com",
+            AccessibilityService.resolveUrlBarText(
+                focus, "org.mozilla.focus:id/mozac_browser_toolbar_url_view", "facebook.com",
+            ),
+        )
+    }
+
+    @Test
+    fun `an id belonging to another browser is not accepted`() {
+        // The candidates are per package, not a global pool.
+        assertNull(
+            AccessibilityService.resolveUrlBarText(
+                chrome, "com.android.chrome:id/location_bar_edit_text", "facebook.com",
+            ),
+        )
+    }
+
+    @Test
+    fun `every browser declares at least one field id`() {
+        AccessibilityService.BROWSER_URL_BAR_FIELD_IDS.forEach { (pkg, ids) ->
+            assertTrue("$pkg declares no url bar id", ids.isNotEmpty())
+            assertTrue("$pkg declares a blank url bar id", ids.all { it.isNotBlank() })
+            assertEquals("$pkg repeats an id", ids.size, ids.toSet().size)
+        }
+    }
+
+    @Test
+    fun `view ids are qualified with the browser package`() {
+        assertEquals(
+            listOf("com.sec.android.app.sbrowser:id/location_bar_edit_text"),
+            AccessibilityService.urlBarViewIds(samsung),
+        )
+        assertTrue(AccessibilityService.urlBarViewIds("com.whatsapp").isEmpty())
+    }
+
+    @Test
     fun `resolveUrlBarText resolves Opera and Firefox url bars`() {
         assertEquals("facebook.com", AccessibilityService.resolveUrlBarText(opera, operaUrlBar, "facebook.com"))
         assertEquals("reddit.com", AccessibilityService.resolveUrlBarText(firefox, firefoxUrlBar, "reddit.com"))
