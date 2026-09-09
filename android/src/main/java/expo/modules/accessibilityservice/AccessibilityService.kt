@@ -56,37 +56,85 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     companion object {
         private const val TAG = "AccessibilityService"
 
-        val BROWSER_URL_BAR_VIEW_IDS: Map<String, String> = mapOf(
-            "com.android.chrome" to "com.android.chrome:id/url_bar",
-            "com.chrome.beta" to "com.chrome.beta:id/url_bar",
-            "com.chrome.dev" to "com.chrome.dev:id/url_bar",
-            "com.brave.browser" to "com.brave.browser:id/url_bar",
-            "com.brave.browser_beta" to "com.brave.browser_beta:id/url_bar",
-            "com.microsoft.emmx" to "com.microsoft.emmx:id/url_bar",
-            "com.vivaldi.browser" to "com.vivaldi.browser:id/url_bar",
-            "com.kiwibrowser.browser" to "com.kiwibrowser.browser:id/url_bar",
-            "com.sec.android.app.sbrowser" to "com.sec.android.app.sbrowser:id/location_bar_edit_text",
-            "com.opera.browser" to "com.opera.browser:id/url_field",
-            "com.opera.browser.beta" to "com.opera.browser.beta:id/url_field",
-            "com.opera.mini.native" to "com.opera.mini.native:id/url_field",
-            "com.opera.gx" to "com.opera.gx:id/url_field",
-            "org.mozilla.firefox" to "org.mozilla.firefox:id/mozac_browser_toolbar_url_view",
-            "org.mozilla.firefox_beta" to "org.mozilla.firefox_beta:id/mozac_browser_toolbar_url_view",
-            "org.mozilla.fenix" to "org.mozilla.fenix:id/mozac_browser_toolbar_url_view",
-            "org.mozilla.focus" to "org.mozilla.focus:id/mozac_browser_toolbar_url_view",
-            "org.mozilla.klar" to "org.mozilla.klar:id/mozac_browser_toolbar_url_view",
-            "com.duckduckgo.mobile.android" to "com.duckduckgo.mobile.android:id/omnibarTextInput",
-            "com.UCMobile.intl" to "com.UCMobile.intl:id/address_bar",
-            "com.mi.globalbrowser" to "com.mi.globalbrowser:id/url",
+        /**
+         * Address-bar field ids per browser package, WITHOUT the `package:id/` prefix.
+         *
+         * A list, not one id, because a browser renames or replaces its address bar
+         * between versions and both spellings then live on real devices at the same
+         * time. Firefox Focus is the case in point: it carries `display_url` from its
+         * own toolbar and `mozac_browser_toolbar_url_view` since the Mozilla components
+         * migration — pick one and the other half of the installed base goes unblocked,
+         * silently, with every unit test still green. Candidates are tried in order.
+         *
+         * Corroborated against Bitwarden's browser map, which is maintained precisely
+         * because their autofill breaks when an id is wrong:
+         * https://github.com/bitwarden/mobile/blob/master/src/Android/Accessibility/AccessibilityHelpers.cs
+         *
+         * This table cannot be verified from a test — see [UrlBarBlindSpotDetector] for
+         * how a wrong entry reports itself from the field instead.
+         */
+        val BROWSER_URL_BAR_FIELD_IDS: Map<String, List<String>> = mapOf(
+            // Chromium family — all of them use url_bar.
+            "com.android.chrome" to listOf("url_bar"),
+            "com.chrome.beta" to listOf("url_bar"),
+            "com.chrome.dev" to listOf("url_bar"),
+            "com.chrome.canary" to listOf("url_bar"),
+            "com.google.android.apps.chrome" to listOf("url_bar"),
+            "com.brave.browser" to listOf("url_bar"),
+            "com.brave.browser_beta" to listOf("url_bar"),
+            "com.brave.browser_nightly" to listOf("url_bar"),
+            "com.microsoft.emmx" to listOf("url_bar"),
+            "com.vivaldi.browser" to listOf("url_bar"),
+            "com.vivaldi.browser.snapshot" to listOf("url_bar"),
+            "com.kiwibrowser.browser" to listOf("url_bar"),
+            "com.ecosia.android" to listOf("url_bar"),
+            "com.naver.whale" to listOf("url_bar"),
+            "org.bromite.bromite" to listOf("url_bar"),
+            "org.chromium.chrome" to listOf("url_bar"),
+            "org.ungoogled.chromium.stable" to listOf("url_bar"),
+
+            // Samsung Internet — its own id, and the reason tsbo#43 exists.
+            "com.sec.android.app.sbrowser" to listOf("location_bar_edit_text"),
+            "com.sec.android.app.sbrowser.beta" to listOf("location_bar_edit_text"),
+
+            // Opera family.
+            "com.opera.browser" to listOf("url_field"),
+            "com.opera.browser.beta" to listOf("url_field"),
+            "com.opera.mini.native" to listOf("url_field"),
+            "com.opera.mini.native.beta" to listOf("url_field"),
+            "com.opera.gx" to listOf("url_field"),
+            "com.opera.touch" to listOf("addressbarEdit"),
+
+            // Gecko family. url_bar_title is the older spelling and still shipping.
+            "org.mozilla.firefox" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
+            "org.mozilla.firefox_beta" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
+            "org.mozilla.fenix" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
+            "org.mozilla.fennec_fdroid" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
+            "org.torproject.torbrowser" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
+            // Focus/Klar keep their own toolbar id on older builds.
+            "org.mozilla.focus" to listOf("display_url", "mozac_browser_toolbar_url_view"),
+            "org.mozilla.klar" to listOf("display_url", "mozac_browser_toolbar_url_view"),
+
+            // Everything else.
+            "com.duckduckgo.mobile.android" to listOf("omnibarTextInput"),
+            "com.UCMobile.intl" to listOf("address_bar"),
+            "com.mi.globalbrowser" to listOf("url"),
+            "com.android.browser" to listOf("url"),
+            "com.amazon.cloud9" to listOf("url"),
         )
 
+        /** The fully-qualified `package:id/field` candidates for [packageName]. */
+        fun urlBarViewIds(packageName: String?): List<String> {
+            val fieldIds = BROWSER_URL_BAR_FIELD_IDS[packageName] ?: return emptyList()
+            return fieldIds.map { "$packageName:id/$it" }
+        }
+
         fun isSupportedBrowser(packageName: String?): Boolean =
-            packageName != null && BROWSER_URL_BAR_VIEW_IDS.containsKey(packageName)
+            packageName != null && BROWSER_URL_BAR_FIELD_IDS.containsKey(packageName)
 
         fun resolveUrlBarText(packageName: String?, sourceViewId: String?, text: String?): String? {
             if (!isSupportedBrowser(packageName)) return null
-            val expectedViewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return null
-            if (sourceViewId != expectedViewId) return null
+            if (sourceViewId !in urlBarViewIds(packageName)) return null
             val trimmed = text?.trim()
             if (trimmed.isNullOrEmpty()) return null
             return trimmed
@@ -343,6 +391,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     }
 
     private val urlBarGate = UrlBarEmissionGate()
+    private val blindSpotDetector = UrlBarBlindSpotDetector()
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -389,7 +438,8 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
 
     private fun handleBrowserContentChanged(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
-        val expectedViewId = BROWSER_URL_BAR_VIEW_IDS[packageName] ?: return
+        val viewIds = urlBarViewIds(packageName)
+        if (viewIds.isEmpty()) return
 
         val source = event.source
         val reading = try {
@@ -397,10 +447,12 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
                 // The node that changed IS the URL bar, so its own focus state answers
                 // whether the user is typing in it. Read before the recycle below.
                 ?.let { UrlBarReading(it, source?.isFocused == true) }
-                ?: queryUrlBarFromRootThrottled(expectedViewId)
+                ?: queryUrlBarFromRootThrottled(viewIds)
         } finally {
             source?.recycle()
         }
+
+        reportIfUrlBarNeverFound(packageName, resolved = reading != null)
 
         if (reading != null && urlBarGate.tryClaimEmission(packageName, reading.text, reading.isEditing)) {
             Log.d(TAG, "URL bar changed in $packageName (editing=${reading.isEditing})")
@@ -416,23 +468,56 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     /** The URL bar's text, and whether the user was editing it — see [EventListener]. */
     private data class UrlBarReading(val text: String, val isEditing: Boolean)
 
-    private fun queryUrlBarFromRootThrottled(viewId: String): UrlBarReading? =
-        if (urlBarGate.tryAcquireQuerySlot()) queryUrlBarFromRoot(viewId) else null
+    /**
+     * Says so, once, when a browser we claim to support has never yielded its address
+     * bar — the only way a stale view id can surface, since it throws nothing and no
+     * test can see it. See [UrlBarBlindSpotDetector].
+     */
+    private fun reportIfUrlBarNeverFound(packageName: String, resolved: Boolean) {
+        if (!blindSpotDetector.onBrowserEvent(packageName, resolved)) return
+        val ids = BROWSER_URL_BAR_FIELD_IDS[packageName]?.joinToString(", ").orEmpty()
+        Log.w(TAG, "No URL bar found in $packageName after many events (tried: $ids)")
+        try {
+            if (Sentry.isEnabled()) {
+                Sentry.captureMessage(
+                    "URL bar never found in a supported browser: $packageName " +
+                        "(website blocking is off there; tried: $ids)",
+                )
+            }
+        } catch (_: Throwable) {
+            // Sentry is compileOnly — absent at runtime unless the host app bundles it.
+        }
+    }
 
-    private fun queryUrlBarFromRoot(viewId: String): UrlBarReading? {
+    private fun queryUrlBarFromRootThrottled(viewIds: List<String>): UrlBarReading? =
+        if (urlBarGate.tryAcquireQuerySlot()) queryUrlBarFromRoot(viewIds) else null
+
+    /**
+     * Tries each candidate id in turn and takes the first that yields text — one tree
+     * walk per candidate, but only inside the query slot the gate already paces, and
+     * only until one hits. A browser with a single id costs exactly what it did before.
+     */
+    private fun queryUrlBarFromRoot(viewIds: List<String>): UrlBarReading? {
         val root = rootInActiveWindow ?: return null
+        return try {
+            viewIds.firstNotNullOfOrNull { viewId -> readUrlBar(root, viewId) }
+        } catch (e: Exception) {
+            Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
+            null
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun readUrlBar(root: AccessibilityNodeInfo, viewId: String): UrlBarReading? {
         var nodes: List<AccessibilityNodeInfo>? = null
         return try {
             nodes = root.findAccessibilityNodeInfosByViewId(viewId)
             val urlBar = nodes?.firstOrNull()
             val text = urlBar?.text?.toString()?.trim()
             if (text.isNullOrEmpty()) null else UrlBarReading(text, urlBar.isFocused)
-        } catch (e: Exception) {
-            Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
-            null
         } finally {
             nodes?.forEach { it.recycle() }
-            root.recycle()
         }
     }
 
