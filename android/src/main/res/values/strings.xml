@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The two strings Android shows on the Accessibility settings screen, where the
+  user decides whether to grant the most sensitive permission on the platform.
+  Without them the screen offers no label and no explanation at all.
+
+  Both are meant to be overridden. A host app that declares a string with the
+  same name wins the resource merge, so it can name itself and its own purpose
+  without touching this library. See CONFIGURATION.md.
+-->
+<resources>
+  <string name="expo_accessibility_service_label">Foreground app detection</string>
+  <string name="expo_accessibility_service_description">Reports which app is in the foreground and, in supported browsers, the text shown in the address bar. It reads no other screen content.</string>
+</resources>

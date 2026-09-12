@@ -7,11 +7,12 @@ An Expo module for managing Android accessibility service permissions and monito
 - ✅ Check if accessibility service is enabled
 - ✅ Request accessibility service permissions
 - ✅ Monitor foreground app changes in real-time
+- ✅ Read the address bar of supported browsers, and know when the user is typing in it
 - ✅ Event-based architecture with subscription management
 - ✅ Support for multiple simultaneous listeners
 - ✅ Cross-platform support (Android only)
 - ✅ TypeScript support
-- ✅ Expo SDK 53+ compatible
+- ✅ Built and tested against Expo SDK 57 (React Native 0.86)
 
 ## Installation
 
@@ -36,73 +37,85 @@ Add the module to your `app.json` or `app.config.js`:
 ### Basic Permission Checking
 
 ```typescript
-import * as AccessibilityService from 'expo-accessibility-service';
-import { useEffect, useState } from 'react';
-import { Button, Text, View } from 'react-native';
+import * as AccessibilityService from 'expo-accessibility-service'
+import { useCallback, useEffect, useState } from 'react'
+import { AppState, Button, Text, View } from 'react-native'
 
 export default function App() {
-  const [permissionStatus, setPermissionStatus] = useState('unknown');
+  const [permissionStatus, setPermissionStatus] = useState('unknown')
+  const [error, setError] = useState<string | null>(null)
+
+  const checkAccessibilityPermission = useCallback(async () => {
+    try {
+      const isEnabled = await AccessibilityService.isEnabled()
+      setPermissionStatus(isEnabled ? 'enabled' : 'disabled')
+    } catch (cause) {
+      setError('Could not read the permission status')
+    }
+  }, [])
 
   useEffect(() => {
-    checkAccessibilityPermission();
-  }, []);
+    void checkAccessibilityPermission()
+  }, [checkAccessibilityPermission])
 
-  const checkAccessibilityPermission = async () => {
-    try {
-      const isEnabled = await AccessibilityService.isEnabled();
-      setPermissionStatus(isEnabled ? 'enabled' : 'disabled');
-    } catch (error) {
-      console.error('Error checking accessibility permission:', error);
-    }
-  };
+  // The user grants the permission in the system Settings app, so the only
+  // reliable moment to re-read it is the return to your app. A fixed timer
+  // cannot know when that happens: the user may take a second, or a minute.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void checkAccessibilityPermission()
+    })
+
+    return () => subscription.remove()
+  }, [checkAccessibilityPermission])
 
   const requestPermission = async () => {
     try {
-      await AccessibilityService.askPermission();
-      // Note: After returning from settings, you may want to recheck the status
-      setTimeout(checkAccessibilityPermission, 1000);
-    } catch (error) {
-      console.error('Error requesting accessibility permission:', error);
+      await AccessibilityService.askPermission()
+    } catch (cause) {
+      setError('Could not open the accessibility settings')
     }
-  };
+  }
 
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
       <Text>Accessibility Service Status: {permissionStatus}</Text>
+      {/* Show failures on screen. A console.error reaches no user. */}
+      {error !== null && <Text>{error}</Text>}
       <Button title="Request Permission" onPress={requestPermission} />
     </View>
-  );
+  )
 }
 ```
 
 ### Monitoring Foreground App Changes
 
 ```typescript
-import * as AccessibilityService from 'expo-accessibility-service';
-import type { AccessibilityEvent } from 'expo-accessibility-service';
-import { useEffect, useState, useRef } from 'react';
-import { Button, Text, View, ScrollView } from 'react-native';
+import * as AccessibilityService from 'expo-accessibility-service'
+import type { AccessibilityEvent } from 'expo-accessibility-service'
+import { useEffect, useState, useRef } from 'react'
+import { Button, Text, View, ScrollView } from 'react-native'
 
 export default function App() {
-  const [events, setEvents] = useState<AccessibilityEvent[]>([]);
-  const subscriptionRef = useRef(null);
+  const [events, setEvents] = useState<AccessibilityEvent[]>([])
+  const subscriptionRef = useRef(null)
 
   useEffect(() => {
     // Start monitoring
     const subscription = AccessibilityService.addAccessibilityEventListener(
       (event: AccessibilityEvent) => {
-        console.log('App changed:', event.packageName);
-        setEvents((prev) => [event, ...prev].slice(0, 10)); // Keep last 10 events
-      }
-    );
+        console.log('App changed:', event.packageName)
+        setEvents((prev) => [event, ...prev].slice(0, 10)) // Keep last 10 events
+      },
+    )
 
-    subscriptionRef.current = subscription;
+    subscriptionRef.current = subscription
 
     // Cleanup on unmount
     return () => {
-      subscription.remove();
-    };
-  }, []);
+      subscription.remove()
+    }
+  }, [])
 
   return (
     <ScrollView>
@@ -115,7 +128,7 @@ export default function App() {
         </View>
       ))}
     </ScrollView>
-  );
+  )
 }
 ```
 
@@ -130,8 +143,8 @@ Checks if the accessibility service is currently enabled for your app.
 **Example:**
 
 ```typescript
-const enabled = await AccessibilityService.isEnabled();
-console.log("Accessibility service enabled:", enabled);
+const enabled = await AccessibilityService.isEnabled()
+console.log('Accessibility service enabled:', enabled)
 ```
 
 ### `askPermission(): Promise<void>`
@@ -143,7 +156,7 @@ Opens the device's accessibility settings page where users can enable the access
 **Example:**
 
 ```typescript
-await AccessibilityService.askPermission();
+await AccessibilityService.askPermission()
 // User will be taken to accessibility settings
 ```
 
@@ -152,6 +165,7 @@ await AccessibilityService.askPermission();
 Registers a listener for foreground app change events. The listener will be called whenever a new app comes to the foreground.
 
 **Parameters:**
+
 - `listener`: A callback function that receives `AccessibilityEvent` objects
 
 **Returns:** An `AccessibilityEventSubscription` object with a `remove()` method to unsubscribe
@@ -161,28 +175,86 @@ Registers a listener for foreground app change events. The listener will be call
 ```typescript
 const subscription = AccessibilityService.addAccessibilityEventListener(
   (event) => {
-    console.log('App changed:', event.packageName);
-    console.log('Activity:', event.className);
-    console.log('Timestamp:', event.timestamp);
-  }
-);
+    console.log('App changed:', event.packageName)
+    console.log('Activity:', event.className)
+    console.log('Timestamp:', event.timestamp)
+  },
+)
 
 // Later, to stop listening:
-subscription.remove();
+subscription.remove()
 ```
 
 **Important Notes:**
+
 - Supports multiple simultaneous listeners
 - Events are delivered with sub-100ms latency
 - The service continues running when the JS app is backgrounded
 - Properly handles permission revocation
 - Always call `subscription.remove()` when done to prevent memory leaks
 
+### `addUrlBarChangeListener(listener: (event: UrlBarEvent) => void): AccessibilityEventSubscription`
+
+Registers a listener for address-bar readings in supported browsers. See [`BROWSER_URL_BAR_FIELD_IDS`](android/src/main/java/expo/modules/accessibilityservice/AccessibilityService.kt) for the browsers that are covered.
+
+**Parameters:**
+
+- `listener`: A callback function that receives `UrlBarEvent` objects
+
+**Returns:** An `AccessibilityEventSubscription` object with a `remove()` method to unsubscribe
+
+**Example:**
+
+```typescript
+const subscription = AccessibilityService.addUrlBarChangeListener((event) => {
+  if (event.isEditing) return // the user is still typing
+
+  console.log('Address shown:', event.rawText)
+})
+
+// Later, to stop listening:
+subscription.remove()
+```
+
+**Important Notes:**
+
+- The address bar emits an event per keystroke, so one visit produces many events
+- `isEditing` is the only reliable way to tell a destination from a keystroke. `true` means the bar held input focus. Treat `true` as authoritative ("do not act yet")
+- `isEditing: false` is **not** proof the user stopped typing. A browser whose address bar is not a focusable text node reports `false` throughout, so keep a fallback for those
+- `rawText` is unparsed. It may be a URL, a search term, a partial word, or a browser's own placeholder
+
+### `goBack(): Promise<boolean>`
+
+Presses the system Back button on the user's behalf. Requires the accessibility service to be bound.
+
+**Returns:** A promise that resolves to `true` when the action was performed, `false` when the service is not bound — so you can tell "refused" from "not running" without a second call.
+
+**Example:**
+
+```typescript
+const wentBack = await AccessibilityService.goBack()
+```
+
+### `isServiceRunning(): Promise<boolean>`
+
+Whether the accessibility service is actually bound and running, rather than merely listed in the system settings. Distinguishes "enabled in settings but not bound" — Restricted Settings on a sideloaded install, or an unbind after process death — from genuinely running.
+
+It asks about the same service ids as `isEnabled()`, so a service configured through `setServiceClassName()` is the one both functions answer about.
+
+**Returns:** A promise that resolves to `true` when the service is bound
+
+### `openAppDetailsSettings(): Promise<void>`
+
+Opens the system's App info screen for your app.
+
+**Returns:** A promise that resolves when the screen is opened. Rejects with `ERR_NO_APP_DETAILS_ACTIVITY` when no activity can handle it.
+
 ### `setServiceClassName(className: string): Promise<void>`
 
 Configure the accessibility service class name to check for. This allows using custom service class names instead of the default "MyAccessibilityService".
 
 **Parameters:**
+
 - `className`: The fully qualified class name (e.g., "com.example.MyCustomAccessibilityService")
 
 **Returns:** A promise that resolves when the configuration is set
@@ -190,20 +262,22 @@ Configure the accessibility service class name to check for. This allows using c
 **Example:**
 
 ```typescript
-await AccessibilityService.setServiceClassName('com.myapp.CustomAccessibilityService');
+await AccessibilityService.setServiceClassName(
+  'com.myapp.CustomAccessibilityService',
+)
 ```
 
 ### `getDetectedServices(): Promise<string[]>`
 
 Get a list of accessibility services detected in the app's manifest. This can help identify available services for configuration.
 
-**Returns:** A promise that resolves to an array of service class names
+**Returns:** A promise that resolves to an array of service class names. Rejects with `ERR_MANIFEST_UNREADABLE` when the manifest cannot be read — an empty array means "none declared", never "the read failed".
 
 **Example:**
 
 ```typescript
-const services = await AccessibilityService.getDetectedServices();
-console.log('Available services:', services);
+const services = await AccessibilityService.getDetectedServices()
+console.log('Available services:', services)
 ```
 
 ## Types
@@ -214,20 +288,33 @@ Event object emitted when a foreground app change is detected.
 
 ```typescript
 type AccessibilityEvent = {
-  packageName: string;  // The package name of the app (e.g., "com.android.chrome")
-  className: string;    // The activity/window class name
-  timestamp: number;    // Unix timestamp in milliseconds
-};
+  packageName: string // The package name of the app (e.g., "com.android.chrome")
+  className: string // The activity/window class name
+  timestamp: number // Unix timestamp in milliseconds
+}
+```
+
+### `UrlBarEvent`
+
+Event object emitted when the address bar changes in a supported browser.
+
+```typescript
+type UrlBarEvent = {
+  packageName: string // The browser package (e.g., "com.android.chrome")
+  rawText: string // The text in the address bar. Unparsed
+  timestamp: number // Unix timestamp in milliseconds
+  isEditing: boolean // Whether the bar held input focus, i.e. the user was typing
+}
 ```
 
 ### `AccessibilityEventSubscription`
 
-Subscription object returned by `addAccessibilityEventListener()`.
+Subscription object returned by `addAccessibilityEventListener()` and `addUrlBarChangeListener()`.
 
 ```typescript
 type AccessibilityEventSubscription = {
-  remove: () => void;  // Call this to unsubscribe from events
-};
+  remove: () => void // Call this to unsubscribe from events
+}
 ```
 
 ## Platform Support
@@ -299,6 +386,7 @@ npx expo run:android
 ```
 
 **Why this happens:**
+
 - The Android Gradle configuration may become out of sync with Expo's autolinking
 - Dependencies introduced by Expo SDK updates may not be properly configured
 - Running `prebuild --clean` regenerates all native Android files with the correct configuration
