@@ -10,6 +10,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import io.sentry.Breadcrumb
 import io.sentry.Sentry
 import java.util.Collections
@@ -171,6 +172,20 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             private set
 
         /**
+         * Whether the Sentry breadcrumbs may carry the foreground app's package name.
+         * Off, and the host app must turn it on deliberately.
+         *
+         * The list of apps a person opens is the most sensitive thing this service
+         * sees. A breadcrumb rides along with the next captured event, so leaving this
+         * on by default shipped that list to a third party on a decision the library
+         * took alone — not the integrator, and not the user. Diagnosing "are events
+         * arriving at all?" needs the count and the timing, which the breadcrumb still
+         * carries either way.
+         */
+        @Volatile
+        var includePackageNamesInTelemetry: Boolean = false
+
+        /**
          * Reference to the current service instance, nulled on unbind/destroy.
          * Used by emitCurrentForegroundApp() to access rootInActiveWindow.
          */
@@ -241,13 +256,16 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          */
         fun isServiceEnabledInSystem(context: Context): Boolean {
             return try {
-                val serviceId = "${context.packageName}/${AccessibilityService::class.java.canonicalName}"
-                isAnyServiceEnabled(context, listOf(serviceId))
+                isAnyServiceEnabled(context, listOf(defaultServiceId(context)))
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to check system accessibility state: ${e.message}", e)
                 false
             }
         }
+
+        /** The id of THIS library's service, `package/fully.qualified.ClassName`. */
+        internal fun defaultServiceId(context: Context): String =
+            "${context.packageName}/${AccessibilityService::class.java.canonicalName}"
 
         /**
          * Pure matcher: is [expectedId] present in the system's bound-services id list?
@@ -255,6 +273,41 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          */
         internal fun matchesBoundService(boundServiceIds: List<String>, expectedId: String): Boolean =
             expectedId in boundServiceIds
+
+        /** As [matchesBoundService], for the several ids a configured service resolves to. */
+        internal fun matchesAnyBoundService(
+            boundServiceIds: List<String>,
+            expectedIds: List<String>,
+        ): Boolean = expectedIds.any { matchesBoundService(boundServiceIds, it) }
+
+        /**
+         * Whether the in-process signal is entitled to answer for [serviceIds].
+         *
+         * [isConnected] and [instance] are set by THIS library's service. They say
+         * nothing about a custom service class the host app configured, so they may
+         * only short-circuit when this library's service is among the ids asked about.
+         * Pure so the entitlement rule is testable without a bound service.
+         */
+        internal fun inProcessSignalAnswersFor(
+            isConnected: Boolean,
+            hasInstance: Boolean,
+            defaultServiceId: String,
+            serviceIds: List<String>,
+        ): Boolean = isConnected && hasInstance && defaultServiceId in serviceIds
+
+        /** The class name to report when the event carries none. */
+        internal const val FALLBACK_CLASS_NAME = "android.view.View"
+
+        /**
+         * The class name to report for an event, falling back when it carries none.
+         *
+         * A missing class name must not cost the consumer the app change itself: the
+         * package is what it acts on. Pure because both call sites owe the same answer,
+         * and they used to disagree — one substituted this fallback, the other dropped
+         * the event.
+         */
+        internal fun resolveClassName(rawClassName: String?): String =
+            rawClassName?.takeUnless { it.isEmpty() } ?: FALLBACK_CLASS_NAME
 
         /**
          * Whether this accessibility service is actually BOUND and running — not merely
@@ -267,21 +320,49 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          * not bound" (Restricted Settings / ECM on a sideloaded install, or an unbind after
          * process death) from genuinely running.
          */
-        fun isServiceRunning(context: Context): Boolean {
-            if (isConnected && instance != null) return true
+        fun isServiceRunning(context: Context): Boolean =
+            isServiceRunning(context, listOf(defaultServiceId(context)))
+
+        /**
+         * As [isServiceRunning], asked about [serviceIds] rather than only this
+         * library's own service.
+         *
+         * The caller resolves the ids, so a host app that configured a custom service
+         * class through `setServiceClassName()` gets an answer about THAT service.
+         * Asking the two questions with different ids is how `isEnabled()` and
+         * `isServiceRunning()` came to contradict each other.
+         *
+         * The in-process shortcut is guarded for the same reason: [isConnected] and
+         * [instance] speak for this library's service and nothing else, so they may
+         * only answer when that service is among the ids asked about.
+         */
+        fun isServiceRunning(context: Context, serviceIds: List<String>): Boolean {
+            val answeredInProcess = inProcessSignalAnswersFor(
+                isConnected = isConnected,
+                hasInstance = instance != null,
+                defaultServiceId = defaultServiceId(context),
+                serviceIds = serviceIds,
+            )
+            if (answeredInProcess) return true
+
             return try {
-                val expectedId = "${context.packageName}/${AccessibilityService::class.java.canonicalName}"
                 val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
                 val boundIds = manager
                     .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
                     .map { it.id }
-                matchesBoundService(boundIds, expectedId)
+                matchesAnyBoundService(boundIds, serviceIds)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to check if accessibility service is running: ${e.message}", e)
                 false
             }
         }
 
+        /**
+         * Presses the system Back button on the user's behalf.
+         *
+         * Returns false when the service is not bound, so a caller can tell "refused"
+         * from "not running".
+         */
         fun goBack(): Boolean =
             instance?.performGlobalAction(
                 android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
@@ -289,13 +370,18 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
 
         /**
          * Reset all state for testing purposes.
+         *
+         * Public because the tests live in another source set, NOT because it is part
+         * of the API. Calling it from an app drops every registered listener.
          */
+        @VisibleForTesting
         fun resetForTesting() {
             eventListeners.clear()
             isConnected = false
             instance = null
         }
 
+        @VisibleForTesting
         fun setInstanceForTesting(service: AccessibilityService?) {
             instance = service
         }
@@ -303,6 +389,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         /**
          * Set connection state for testing purposes.
          */
+        @VisibleForTesting
         fun setConnectedForTesting(connected: Boolean) {
             isConnected = connected
         }
@@ -316,6 +403,11 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             listener?.let { eventListeners.add(it) }
         }
 
+        @Deprecated(
+            message = "Returns an arbitrary listener: the backing set has no order. " +
+                "Use getListenerCount() or hasListener() instead.",
+            replaceWith = ReplaceWith("getListenerCount()")
+        )
         fun getEventListener(): EventListener? = eventListeners.firstOrNull()
 
         fun emitCurrentForegroundApp() {
@@ -357,23 +449,55 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
                 val root = service.rootInActiveWindow
                 if (root != null) {
                     val pkg = root.packageName?.toString()
-                    val cls = root.className?.toString() ?: "android.view.View"
-                    root.recycle()
+                    val cls = resolveClassName(root.className?.toString())
+                    recycleQuietly(root)
                     if (!pkg.isNullOrEmpty()) return pkg to cls
                 }
                 // Fallback: scan interactive windows for the active application window's root.
+                // Each window is recycled whatever this loop does with it — including on
+                // the `continue` and the `return`, which is why the body is a try/finally
+                // rather than a recycle at the end.
                 for (window in service.windows) {
-                    if (!window.isActive) continue
-                    val wRoot = window.root ?: continue
-                    val pkg = wRoot.packageName?.toString()
-                    val cls = wRoot.className?.toString() ?: "android.view.View"
-                    wRoot.recycle()
-                    if (!pkg.isNullOrEmpty()) return pkg to cls
+                    try {
+                        if (!window.isActive) continue
+                        val wRoot = window.root ?: continue
+                        val pkg = wRoot.packageName?.toString()
+                        val cls = resolveClassName(wRoot.className?.toString())
+                        recycleQuietly(wRoot)
+                        if (!pkg.isNullOrEmpty()) return pkg to cls
+                    } finally {
+                        recycleQuietly(window)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "resolveForegroundPackage failed: ${e.message}", e)
             }
             return null
+        }
+
+        /**
+         * Returns a pooled node or window to the framework, absorbing the throw from
+         * one the framework already reclaimed.
+         *
+         * DEPRECATION: `recycle()` is deprecated from API 33 and does nothing there,
+         * where the pooling it belongs to is gone. It still matters below 33, so these
+         * calls stay until `minSdk` reaches 33 — then every one of them can go.
+         */
+        private fun recycleQuietly(node: AccessibilityNodeInfo) {
+            try {
+                node.recycle()
+            } catch (e: Exception) {
+                Log.w(TAG, "recycling a node failed: ${e.message}")
+            }
+        }
+
+        /** As [recycleQuietly], for a window. Same deprecation horizon. */
+        private fun recycleQuietly(window: android.view.accessibility.AccessibilityWindowInfo) {
+            try {
+                window.recycle()
+            } catch (e: Exception) {
+                Log.w(TAG, "recycling a window failed: ${e.message}")
+            }
         }
 
         /**
@@ -430,9 +554,9 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         urlBarGate.forgetLastEmission()
 
         val packageName = event.packageName?.toString()
-        val className = event.className?.toString()
+        val className = resolveClassName(event.className?.toString())
 
-        if (!packageName.isNullOrEmpty() && !className.isNullOrEmpty()) {
+        if (!packageName.isNullOrEmpty()) {
             val timestamp = System.currentTimeMillis()
 
             Log.d(TAG, "App changed: package=$packageName, class=$className")
@@ -444,9 +568,11 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
                             category = "accessibility"
                             message = "event received"
                             setData("eventType", event.eventType)
-                            setData("packageName", packageName)
                             setData("receivedAtMillis", timestamp)
                             setData("listenerCount", eventListeners.size)
+                            if (includePackageNamesInTelemetry) {
+                                setData("packageName", packageName)
+                            }
                         }
                     )
                 }
@@ -508,6 +634,10 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         if (!blindSpotDetector.onLookup(packageName, foundNode = verdict)) return
         val ids = BROWSER_URL_BAR_FIELD_IDS[packageName]?.joinToString(", ").orEmpty()
         Log.w(TAG, "No URL bar found in $packageName after many events (tried: $ids)")
+        // This one keeps the package name, unlike the per-event breadcrumb behind
+        // [includePackageNamesInTelemetry]. It names a BROWSER we ship support for, it
+        // fires at most a handful of times in an install's life, and the report is
+        // worthless without knowing which browser broke.
         try {
             if (Sentry.isEnabled()) {
                 Sentry.captureMessage(
@@ -520,31 +650,29 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
     }
 
-    private fun queryUrlBarFromRootThrottled(viewIds: List<String>): UrlBarLookup =
-        if (urlBarGate.tryAcquireQuerySlot()) {
-            queryUrlBarFromRoot(viewIds)
-        } else {
-            UrlBarLookup.NotAttempted
-        }
-
     /**
      * Hands the active window to [UrlBarTreeReader], which owns the candidate loop and
      * the per-node recycling. The root is this method's to recycle, once, whatever the
      * reader does with what is inside it.
+     *
+     * The root is obtained BEFORE the pacing slot is taken. Taking the slot first spent
+     * it on the attempts where there is no window to read — which happen during window
+     * transitions, the exact moment a navigation lands — and then refused the next real
+     * attempt for the rest of the interval.
      */
-    private fun queryUrlBarFromRoot(viewIds: List<String>): UrlBarLookup {
+    private fun queryUrlBarFromRootThrottled(viewIds: List<String>): UrlBarLookup {
         val root = rootInActiveWindow ?: return UrlBarLookup.NotAttempted
         return try {
-            UrlBarTreeReader.read(nodeSourceOf(root), viewIds)
+            if (!urlBarGate.tryAcquireQuerySlot()) {
+                UrlBarLookup.NotAttempted
+            } else {
+                UrlBarTreeReader.read(nodeSourceOf(root), viewIds)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
             UrlBarLookup.NotAttempted
         } finally {
-            try {
-                root.recycle()
-            } catch (e: Exception) {
-                Log.e(TAG, "recycling the window root failed: ${e.message}", e)
-            }
+            recycleQuietly(root)
         }
     }
 
