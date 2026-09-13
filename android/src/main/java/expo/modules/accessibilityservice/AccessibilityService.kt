@@ -649,6 +649,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
      * attempt for the rest of the interval.
      */
     private fun queryUrlBarFromRootThrottled(viewIds: List<String>): UrlBarLookup {
+        if (!urlBarGate.isQuerySlotAvailable()) return UrlBarLookup.NotAttempted
         val root = rootInActiveWindow ?: return UrlBarLookup.NotAttempted
         return try {
             if (!urlBarGate.tryAcquireQuerySlot()) {
