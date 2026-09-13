@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  android:description is the only text the user reads before granting this
+  service. Android shows it on the service's detail screen under Accessibility
+  settings. An empty description leaves that screen blank, which is both a Play
+  policy problem and the reason users back out of the grant.
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+      android:description="@string/expo_accessibility_service_description"
+      android:summary="@string/expo_accessibility_service_description"
       android:accessibilityEventTypes="typeWindowStateChanged|typeViewTextChanged|typeWindowContentChanged"
       android:accessibilityFeedbackType="feedbackGeneric"
       android:accessibilityFlags="flagRetrieveInteractiveWindows"

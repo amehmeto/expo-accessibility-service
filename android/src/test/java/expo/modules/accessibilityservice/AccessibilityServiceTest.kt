@@ -36,7 +36,9 @@ class AccessibilityServiceTest {
         val result = AccessibilityService.addEventListener(listener1)
 
         assertTrue("addEventListener should return true for new listener", result)
-        assertEquals("getEventListener should return the added listener", listener1, AccessibilityService.getEventListener())
+        // hasListener, not getEventListener: this test is about THIS listener being
+        // registered, and getEventListener answers with an arbitrary one.
+        assertTrue("the listener should be registered", AccessibilityService.hasListener(listener1))
     }
 
     @Test
@@ -53,7 +55,8 @@ class AccessibilityServiceTest {
         val result = AccessibilityService.removeEventListener(listener1)
 
         assertTrue("removeEventListener should return true when listener was removed", result)
-        assertNull("getEventListener should return null after removing the only listener", AccessibilityService.getEventListener())
+        assertFalse("the listener should be gone", AccessibilityService.hasListener(listener1))
+        assertEquals("no listener should remain", 0, AccessibilityService.getListenerCount())
     }
 
     @Test
@@ -82,12 +85,14 @@ class AccessibilityServiceTest {
         verify(listener3).onAppChanged(eq(packageName), eq(className), eq(timestamp))
     }
 
+    // The deprecated pair still has to work for callers written against it, so these
+    // three tests use it on purpose.
     @Test
+    @Suppress("DEPRECATION")
     fun `deprecated setEventListener clears and adds single listener`() {
         AccessibilityService.addEventListener(listener1)
         AccessibilityService.addEventListener(listener2)
 
-        @Suppress("DEPRECATION")
         AccessibilityService.setEventListener(listener3)
 
         assertEquals("setEventListener should replace all listeners with the new one", listener3, AccessibilityService.getEventListener())
@@ -100,17 +105,18 @@ class AccessibilityServiceTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `deprecated setEventListener with null clears all`() {
         AccessibilityService.addEventListener(listener1)
         AccessibilityService.addEventListener(listener2)
 
-        @Suppress("DEPRECATION")
         AccessibilityService.setEventListener(null)
 
         assertNull("getEventListener should return null after setEventListener(null)", AccessibilityService.getEventListener())
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `getEventListener returns first listener for backwards compat`() {
         AccessibilityService.addEventListener(listener1)
         AccessibilityService.addEventListener(listener2)

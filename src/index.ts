@@ -1,8 +1,9 @@
 // Reexport the native module. On web, it will be resolved to ExpoAccessibilityServiceModule.web.ts
 // and on native platforms to ExpoAccessibilityServiceModule.ts
-import {
+import type {
   AccessibilityEvent,
   AccessibilityEventSubscription,
+  UrlBarEvent,
 } from './ExpoAccessibilityService.types'
 import ExpoAccessibilityServiceModule from './ExpoAccessibilityServiceModule'
 
@@ -95,5 +96,60 @@ export function emitCurrentForegroundApp(): Promise<void> {
   return ExpoAccessibilityServiceModule.emitCurrentForegroundApp()
 }
 
+/**
+ * Press the system Back button on the user's behalf.
+ *
+ * Requires the accessibility service to be bound. Resolves to `false` when it is
+ * not, so you can tell "refused" from "not running" without a second call.
+ *
+ * @returns Promise that resolves to whether the action was performed
+ *
+ * @example
+ * ```typescript
+ * // Push the user out of an app you are blocking:
+ * const wentBack = await goBack()
+ * ```
+ */
+export function goBack(): Promise<boolean> {
+  return ExpoAccessibilityServiceModule.goBack()
+}
+
+/**
+ * Add a listener for address-bar readings in supported browsers.
+ *
+ * Fires while the user types, so one visit can produce many events. Use
+ * `event.isEditing` to tell a destination from a keystroke: `true` means the bar
+ * held input focus, so the text is what the user is typing, not where they are.
+ *
+ * `event.rawText` is unparsed. It may be a URL, a search term, or a partial
+ * word.
+ *
+ * @param listener - Callback that receives packageName, rawText, timestamp and isEditing
+ * @returns A subscription object with a remove() method to unsubscribe
+ *
+ * @example
+ * ```typescript
+ * const subscription = addUrlBarChangeListener((event) => {
+ *   if (event.isEditing) return // still typing, not a destination
+ *   console.log('Address shown:', event.rawText)
+ * })
+ *
+ * // Later, to stop listening:
+ * subscription.remove()
+ * ```
+ */
+export function addUrlBarChangeListener(
+  listener: (event: UrlBarEvent) => void,
+): AccessibilityEventSubscription {
+  const subscription = ExpoAccessibilityServiceModule.addListener(
+    'onUrlBarChanged',
+    listener,
+  )
+
+  return {
+    remove: () => subscription.remove(),
+  }
+}
+
 // Re-export types for convenience
-export type { AccessibilityEvent, AccessibilityEventSubscription }
+export type { AccessibilityEvent, AccessibilityEventSubscription, UrlBarEvent }
