@@ -453,21 +453,18 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
                     recycleQuietly(root)
                     if (!pkg.isNullOrEmpty()) return pkg to cls
                 }
-                // Fallback: scan interactive windows for the active application window's root.
-                // Each window is recycled whatever this loop does with it — including on
-                // the `continue` and the `return`, which is why the body is a try/finally
-                // rather than a recycle at the end.
-                for (window in service.windows) {
-                    try {
+                val windows = service.windows
+                try {
+                    for (window in windows) {
                         if (!window.isActive) continue
                         val wRoot = window.root ?: continue
                         val pkg = wRoot.packageName?.toString()
                         val cls = resolveClassName(wRoot.className?.toString())
                         recycleQuietly(wRoot)
                         if (!pkg.isNullOrEmpty()) return pkg to cls
-                    } finally {
-                        recycleQuietly(window)
                     }
+                } finally {
+                    windows.forEach { recycleQuietly(it) }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "resolveForegroundPackage failed: ${e.message}", e)
@@ -475,14 +472,6 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             return null
         }
 
-        /**
-         * Returns a pooled node or window to the framework, absorbing the throw from
-         * one the framework already reclaimed.
-         *
-         * DEPRECATION: `recycle()` is deprecated from API 33 and does nothing there,
-         * where the pooling it belongs to is gone. It still matters below 33, so these
-         * calls stay until `minSdk` reaches 33 — then every one of them can go.
-         */
         private fun recycleQuietly(node: AccessibilityNodeInfo) {
             try {
                 node.recycle()
@@ -491,7 +480,6 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             }
         }
 
-        /** As [recycleQuietly], for a window. Same deprecation horizon. */
         private fun recycleQuietly(window: android.view.accessibility.AccessibilityWindowInfo) {
             try {
                 window.recycle()

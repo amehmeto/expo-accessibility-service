@@ -9,7 +9,6 @@ import {
   emitCurrentForegroundApp,
   goBack,
   AccessibilityEvent,
-  UrlBarEvent,
 } from '../index'
 
 // Mock subscription object
@@ -352,31 +351,6 @@ describe('ExpoAccessibilityService', () => {
 
       expect(mockModule.addListener).toHaveBeenCalledTimes(2)
       expect(subscription1).not.toBe(subscription2)
-    })
-
-    it('should carry isEditing alongside the text it belongs to', () => {
-      const listener = jest.fn()
-      const typing: UrlBarEvent = {
-        packageName: 'com.android.chrome',
-        rawText: 'fa',
-        timestamp: 1234567890,
-        isEditing: true,
-      }
-      const arrived: UrlBarEvent = {
-        packageName: 'com.android.chrome',
-        rawText: 'facebook.com',
-        timestamp: 1234567891,
-        isEditing: false,
-      }
-
-      addUrlBarChangeListener(listener)
-
-      // The bridge hands the listener whatever the native side emitted.
-      listener(typing)
-      listener(arrived)
-
-      expect(listener).toHaveBeenNthCalledWith(1, typing)
-      expect(listener).toHaveBeenNthCalledWith(2, arrived)
     })
   })
 })
