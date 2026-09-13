@@ -1,5 +1,7 @@
 package expo.modules.accessibilityservice
 
+import android.os.SystemClock
+
 /**
  * Decides whether a browser content event is worth acting on, without touching
  * the accessibility tree.
@@ -28,7 +30,7 @@ package expo.modules.accessibilityservice
  */
 internal class UrlBarEmissionGate(
     private val minQueryIntervalMs: Long = DEFAULT_MIN_QUERY_INTERVAL_MS,
-    private val clock: () -> Long = System::currentTimeMillis,
+    private val clock: () -> Long = SystemClock::elapsedRealtime,
 ) {
     companion object {
         const val DEFAULT_MIN_QUERY_INTERVAL_MS = 250L
@@ -39,14 +41,18 @@ internal class UrlBarEmissionGate(
     // (package, url, editing) to collide with a different (package, url, editing).
     private var lastEmitted: Triple<String, String, Boolean>? = null
 
+    fun isQuerySlotAvailable(): Boolean = isQuerySlotAvailableAt(clock())
+
+    private fun isQuerySlotAvailableAt(now: Long): Boolean =
+        lastQueryAtMs?.let { now - it >= minQueryIntervalMs } ?: true
+
     /**
      * Takes the next full-tree query slot when the pacing interval has elapsed.
      * Consumes the slot when it returns true, so callers must query only then.
      */
     fun tryAcquireQuerySlot(): Boolean {
         val now = clock()
-        val last = lastQueryAtMs
-        if (last != null && now - last < minQueryIntervalMs) return false
+        if (!isQuerySlotAvailableAt(now)) return false
         lastQueryAtMs = now
         return true
     }
