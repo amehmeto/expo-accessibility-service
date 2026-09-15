@@ -57,6 +57,18 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          # The action's default is 'tools platform-tools'. `tools` is the
+          # obsolete SDK Tools package, superseded by cmdline-tools, and it is no
+          # longer served by Google's SDK repository — sdkmanager answers
+          # "Failed to find package 'tools'" and exits 1, which fails this job
+          # before a single line is compiled.
+          #
+          # Android Build last ran green on 2026-09-13; every run since fails on
+          # setup, on any branch. Gradle needs platform-tools and the compile SDK,
+          # never `tools`, so naming the package we actually use is both the fix
+          # and the honest declaration.
+          packages: 'platform-tools'
 
       - name: Cache Gradle dependencies
         uses: actions/cache@v5
