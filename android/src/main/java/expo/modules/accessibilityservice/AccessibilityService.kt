@@ -198,7 +198,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          * Per-instance state would reset the counters and the backoff on every rebind,
          * so "once, then quieter" would become "once per rebind".
          */
-        private val blindSpotDetector = UrlBarBlindSpotDetector()
+        private var blindSpotDetector = UrlBarBlindSpotDetector()
 
         // Thread-safe set of listeners (replaces single eventListener)
         private val eventListeners = Collections.synchronizedSet(mutableSetOf<EventListener>())
@@ -379,6 +379,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             eventListeners.clear()
             isConnected = false
             instance = null
+            blindSpotDetector = UrlBarBlindSpotDetector()
         }
 
         @VisibleForTesting
@@ -544,6 +545,13 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         val packageName = event.packageName?.toString()
         val className = resolveClassName(event.className?.toString())
 
+        if (packageName != null &&
+            isSupportedBrowser(packageName) &&
+            blindSpotDetector.onBrowserWindowShown(packageName)
+        ) {
+            reportStaleUrlBarId(packageName)
+        }
+
         if (!packageName.isNullOrEmpty()) {
             val timestamp = System.currentTimeMillis()
 
@@ -588,7 +596,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             source?.recycle()
         }
 
-        reportIfUrlBarIdLooksStale(packageName, lookup)
+        recordUrlBarLookup(packageName, lookup)
 
         val reading = (lookup as? UrlBarLookup.Read)?.reading
         if (reading != null && urlBarGate.tryClaimEmission(packageName, reading.text, reading.isEditing)) {
@@ -603,25 +611,28 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     }
 
     /**
-     * Says so when a browser we claim to support keeps failing to yield its address
-     * bar — the only way a stale view id can surface, since it throws nothing and no
-     * test can see it. See [UrlBarBlindSpotDetector].
-     *
-     * Only a lookup that actually happened and matched no node counts against the
-     * browser. Feeding it every event would count the ones where the query slot was
-     * refused (one tree query per 250ms, against events arriving many times a second)
-     * and the ones where a node was found holding no text — and a browser animating a
-     * blank new tab would be reported as broken.
+     * Feeds [UrlBarBlindSpotDetector] the lookups that actually happened. A refused query
+     * slot (one tree query per 250ms, against events arriving many times a second) says
+     * nothing about the id, and a node found holding no text — a blank new tab — is the
+     * id being right.
      */
-    private fun reportIfUrlBarIdLooksStale(packageName: String, lookup: UrlBarLookup) {
-        val verdict = when (lookup) {
+    private fun recordUrlBarLookup(packageName: String, lookup: UrlBarLookup) {
+        val foundNode = when (lookup) {
             UrlBarLookup.NotAttempted -> return
             UrlBarLookup.NoNodeMatched -> false
             UrlBarLookup.Empty, is UrlBarLookup.Read -> true
         }
-        if (!blindSpotDetector.onLookup(packageName, foundNode = verdict)) return
+        blindSpotDetector.onLookup(packageName, foundNode)
+    }
+
+    /**
+     * Says so when a browser we claim to support went several visits without yielding
+     * its address bar — the only way a stale view id can surface, since it throws nothing
+     * and no test can see it. See [UrlBarBlindSpotDetector].
+     */
+    private fun reportStaleUrlBarId(packageName: String) {
         val ids = BROWSER_URL_BAR_FIELD_IDS[packageName]?.joinToString(", ").orEmpty()
-        Log.w(TAG, "No URL bar found in $packageName after many events (tried: $ids)")
+        Log.w(TAG, "No URL bar found in $packageName over several visits (tried: $ids)")
         // This one keeps the package name, unlike the per-event breadcrumb behind
         // [includePackageNamesInTelemetry]. It names a BROWSER we ship support for, it
         // fires at most a handful of times in an install's life, and the report is
