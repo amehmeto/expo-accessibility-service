@@ -54,6 +54,13 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
     }
 
+    /** What [readForegroundUrlBar] found in the browser in front. */
+    data class ForegroundUrlBar(
+        val packageName: String,
+        val text: String,
+        val isEditing: Boolean,
+    )
+
     companion object {
         private const val TAG = "AccessibilityService"
 
@@ -369,6 +376,19 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             ) ?: false
 
         /**
+         * Reads the URL bar of the window in front now, outside the event flow.
+         *
+         * For a caller that must check what an action of its own did, such as a
+         * [goBack] the browser may not act on: the event flow announces an address
+         * once, so an address still shown after that action never comes back through
+         * [EventListener.onUrlBarChanged].
+         *
+         * Null when the service is not bound, when the window in front is not a
+         * supported browser, or when its URL bar is not found or holds no address.
+         */
+        fun readForegroundUrlBar(): ForegroundUrlBar? = instance?.readActiveWindowUrlBar()
+
+        /**
          * Reset all state for testing purposes.
          *
          * Public because the tests live in another source set, NOT because it is part
@@ -660,6 +680,30 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         } catch (e: Exception) {
             Log.e(TAG, "queryUrlBarFromRoot failed: ${e.message}", e)
             UrlBarLookup.NotAttempted
+        } finally {
+            recycleQuietly(root)
+        }
+    }
+
+    /**
+     * Unpaced, unlike [queryUrlBarFromRootThrottled]: a caller asks once per action it
+     * takes, and taking the event slot here would delay the next navigation.
+     */
+    private fun readActiveWindowUrlBar(): ForegroundUrlBar? {
+        val root = rootInActiveWindow ?: return null
+        return try {
+            val packageName = root.packageName?.toString()
+            val viewIds = urlBarViewIds(packageName)
+            if (packageName == null || viewIds.isEmpty()) {
+                null
+            } else {
+                (UrlBarTreeReader.read(nodeSourceOf(root), viewIds) as? UrlBarLookup.Read)
+                    ?.reading
+                    ?.let { ForegroundUrlBar(packageName, it.text, it.isEditing) }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "readForegroundUrlBar failed: ${e.message}", e)
+            null
         } finally {
             recycleQuietly(root)
         }
