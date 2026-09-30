@@ -76,11 +76,25 @@ class ForegroundUrlBarReadTest {
     }
 
     @Test
-    fun `reads nothing when the URL bar holds no address`() {
+    fun `keeps the browser identity when the URL bar holds no address`() {
         val root = windowOf(chrome, urlBar = urlBarNode("", focused = false))
         doReturn(root).`when`(service).rootInActiveWindow
 
-        assertNull(AccessibilityService.readForegroundUrlBar())
+        assertEquals(
+            AccessibilityService.ForegroundUrlBar(chrome, text = null, isEditing = false),
+            AccessibilityService.readForegroundUrlBar(),
+        )
+    }
+
+    @Test
+    fun `keeps the browser identity when its toolbar is hidden`() {
+        val root = windowOf(chrome, urlBars = emptyList())
+        doReturn(root).`when`(service).rootInActiveWindow
+
+        assertEquals(
+            AccessibilityService.ForegroundUrlBar(chrome, text = null, isEditing = false),
+            AccessibilityService.readForegroundUrlBar(),
+        )
     }
 
     @Test
@@ -107,9 +121,12 @@ class ForegroundUrlBarReadTest {
     }
 
     private fun windowOf(browser: String, urlBar: AccessibilityNodeInfo) =
+        windowOf(browser, listOf(urlBar))
+
+    private fun windowOf(browser: String, urlBars: List<AccessibilityNodeInfo>) =
         mock<AccessibilityNodeInfo> {
             on { packageName } doReturn browser
-            on { findAccessibilityNodeInfosByViewId(chromeUrlBar) } doReturn listOf(urlBar)
+            on { findAccessibilityNodeInfosByViewId(chromeUrlBar) } doReturn urlBars
         }
 
     private fun browserContentEvent() = mock<AccessibilityEvent> {

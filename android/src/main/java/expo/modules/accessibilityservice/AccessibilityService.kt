@@ -57,7 +57,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     /** What [readForegroundUrlBar] found in the browser in front. */
     data class ForegroundUrlBar(
         val packageName: String,
-        val text: String,
+        val text: String?,
         val isEditing: Boolean,
     )
 
@@ -383,8 +383,9 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          * once, so an address still shown after that action never comes back through
          * [EventListener.onUrlBarChanged].
          *
-         * Null when the service is not bound, when the window in front is not a
-         * supported browser, or when its URL bar is not found or holds no address.
+         * Null when the service is not bound or the window in front is not a supported
+         * browser. [ForegroundUrlBar.text] is null when that browser's URL bar is not
+         * found or holds no address.
          */
         fun readForegroundUrlBar(): ForegroundUrlBar? = instance?.readActiveWindowUrlBar()
 
@@ -708,9 +709,10 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             if (packageName == null || viewIds.isEmpty()) {
                 null
             } else {
-                (UrlBarTreeReader.read(nodeSourceOf(root), viewIds) as? UrlBarLookup.Read)
-                    ?.reading
-                    ?.let { ForegroundUrlBar(packageName, it.text, it.isEditing) }
+                val reading =
+                    (UrlBarTreeReader.read(nodeSourceOf(root), viewIds) as? UrlBarLookup.Read)
+                        ?.reading
+                ForegroundUrlBar(packageName, reading?.text, reading?.isEditing == true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "readForegroundUrlBar failed: ${e.message}", e)
