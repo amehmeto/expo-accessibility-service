@@ -65,6 +65,16 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         private const val TAG = "AccessibilityService"
 
         /**
+         * Fenix: Firefox and its Beta, Nightly and F-Droid builds. Its toolbar is
+         * drawn by Compose and has no view id, so the first candidates are the views
+         * that host it: see [FirefoxComposeToolbar]. The ids after them are the
+         * toolbar views of the builds before Firefox 152, which share these packages.
+         */
+        private val FENIX_URL_BAR_FIELD_IDS =
+            FirefoxComposeToolbar.HOST_FIELD_IDS +
+                listOf("mozac_browser_toolbar_url_view", "url_bar_title")
+
+        /**
          * Address-bar field ids per browser package, WITHOUT the `package:id/` prefix.
          *
          * A list, not one id, because a browser renames or replaces its address bar
@@ -114,10 +124,10 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             "com.opera.touch" to listOf("addressbarEdit"),
 
             // Gecko family. url_bar_title is the older spelling and still shipping.
-            "org.mozilla.firefox" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
-            "org.mozilla.firefox_beta" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
-            "org.mozilla.fenix" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
-            "org.mozilla.fennec_fdroid" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
+            "org.mozilla.firefox" to FENIX_URL_BAR_FIELD_IDS,
+            "org.mozilla.firefox_beta" to FENIX_URL_BAR_FIELD_IDS,
+            "org.mozilla.fenix" to FENIX_URL_BAR_FIELD_IDS,
+            "org.mozilla.fennec_fdroid" to FENIX_URL_BAR_FIELD_IDS,
             "org.torproject.torbrowser" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
             // Focus/Klar keep their own toolbar id on older builds.
             "org.mozilla.focus" to listOf("display_url", "mozac_browser_toolbar_url_view"),
@@ -722,9 +732,17 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         }
     }
 
-    /** Adapts one window's tree to the little the reader needs of it. */
+    /**
+     * Adapts one window's tree to the little the reader needs of it. A view that hosts
+     * a Compose toolbar is not the URL bar: the address node under it is.
+     */
     private fun nodeSourceOf(root: AccessibilityNodeInfo) = UrlBarNodeSource { viewId ->
-        root.findAccessibilityNodeInfosByViewId(viewId)?.map { AndroidUrlBarNode(it) }
+        val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+        if (FirefoxComposeToolbar.isHostId(viewId)) {
+            nodes?.mapNotNull { FirefoxComposeToolbar.findAddress(it) }
+        } else {
+            nodes?.map { AndroidUrlBarNode(it) }
+        }
     }
 
     private class AndroidUrlBarNode(private val node: AccessibilityNodeInfo) : UrlBarNode {
