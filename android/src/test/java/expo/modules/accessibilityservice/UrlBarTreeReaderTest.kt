@@ -111,14 +111,18 @@ class UrlBarTreeReaderTest {
 
     // ========== The candidates ==========
 
-    @Test
-    fun `falls through to the second candidate when the first matches nothing`() {
-        val tree = FakeTree(mapOf(focusMozacId to listOf(FakeNode("facebook.com"))))
-
+    private fun assertReadsFacebookFromSecondCandidate(tree: FakeTree) {
         val lookup = UrlBarTreeReader.read(tree, listOf(focusOwnId, focusMozacId))
 
         assertEquals(UrlBarLookup.Read(UrlBarReading("facebook.com", isEditing = false)), lookup)
         assertEquals(listOf(focusOwnId, focusMozacId), tree.queried)
+    }
+
+    @Test
+    fun `falls through to the second candidate when the first matches nothing`() {
+        val tree = FakeTree(mapOf(focusMozacId to listOf(FakeNode("facebook.com"))))
+
+        assertReadsFacebookFromSecondCandidate(tree)
     }
 
     @Test
@@ -146,10 +150,7 @@ class UrlBarTreeReaderTest {
             throwFor = setOf(focusOwnId),
         )
 
-        val lookup = UrlBarTreeReader.read(tree, listOf(focusOwnId, focusMozacId))
-
-        assertEquals(UrlBarLookup.Read(UrlBarReading("facebook.com", isEditing = false)), lookup)
-        assertEquals(listOf(focusOwnId, focusMozacId), tree.queried)
+        assertReadsFacebookFromSecondCandidate(tree)
     }
 
     @Test
