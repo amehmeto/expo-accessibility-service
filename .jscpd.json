@@ -1,0 +1,11 @@
+{
+  "path": ["android/src"],
+  "format": ["kotlin"],
+  "minTokens": 50,
+  "minLines": 5,
+  "ignorePattern": ["import [a-zA-Z.]+"],
+  "exitCode": 1,
+  "reporters": ["console"],
+  "noTips": true,
+  "gitignore": false
+}

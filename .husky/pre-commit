@@ -1,1 +1,7 @@
 npx lint-staged
+
+# Kotlin complexity and unused code (detekt), then Kotlin clones (jscpd). Both
+# read every Kotlin file, not the staged ones: a clone is a clone only against
+# the file it copies, which the commit need not touch.
+npm run --silent lint:kotlin || exit 1
+npm run --silent lint:kotlin-dupes || exit 1

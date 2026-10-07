@@ -39,6 +39,38 @@ jobs:
       - name: Run tests
         run: npm test
 
+  # The pre-commit hook runs the same two commands. This job is what holds when
+  # a commit skipped the hook. It needs no Android project, so it reports before
+  # the Android job has finished its prebuild.
+  kotlin-static:
+    name: Kotlin complexity, unused code & clones
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run detekt
+        run: npm run lint:kotlin
+
+      - name: Run jscpd on Kotlin
+        run: npm run lint:kotlin-dupes
+
   android:
     name: Android Build
     runs-on: ubuntu-latest
