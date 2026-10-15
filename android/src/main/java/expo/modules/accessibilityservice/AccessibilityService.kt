@@ -7,6 +7,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -618,7 +619,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
 
         val source = event.source
         val lookup = try {
-            resolveUrlBarText(packageName, source?.viewIdResourceName, source?.text?.toString())
+            resolveUrlBarText(packageName, source?.viewIdResourceName, source?.let(::readShownText))
                 // The node that changed IS the URL bar, so its own focus state answers
                 // whether the user is typing in it. Read before the recycle below.
                 ?.let { UrlBarLookup.Read(UrlBarReading(it, source?.isFocused == true)) }
@@ -746,7 +747,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
     }
 
     private class AndroidUrlBarNode(private val node: AccessibilityNodeInfo) : UrlBarNode {
-        override val text: String? get() = node.text?.toString()
+        override val text: String? get() = readShownText(node)
         override val isFocused: Boolean get() = node.isFocused
         override fun recycle() = node.recycle()
     }
@@ -783,4 +784,14 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         super.onDestroy()
         Log.d(TAG, "Accessibility service destroyed, listeners=${eventListeners.size}")
     }
+}
+
+/**
+ * The text a URL-bar node shows, or null while it shows its hint. An empty text field
+ * reports its grey hint ("Search or type URL") as its text, flagged by
+ * `isShowingHintText`: that is no address and no search, so it is not read as one.
+ */
+private fun readShownText(node: AccessibilityNodeInfo): String? {
+    val isShowingHint = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && node.isShowingHintText
+    return if (isShowingHint) null else node.text?.toString()
 }
