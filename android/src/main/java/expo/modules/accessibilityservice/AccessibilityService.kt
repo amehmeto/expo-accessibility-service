@@ -800,8 +800,9 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         val text = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, address)
         }
-        field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)
-        field.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+        val isWritten = field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)
+        val isEntered = field.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+        Log.d(TAG, "Address written in the URL bar: written=$isWritten, entered=$isEntered")
     }
 
     /**
