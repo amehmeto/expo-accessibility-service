@@ -8,9 +8,11 @@ import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
 import io.sentry.Breadcrumb
 import io.sentry.Sentry
@@ -401,6 +403,24 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         fun readForegroundUrlBar(): ForegroundUrlBar? = instance?.readActiveWindowUrlBar()
 
         /**
+         * Opens [address] in the current tab of the browser in front, the way a user
+         * would: its URL bar is tapped, given [address] and validated with Enter.
+         *
+         * False when nothing was tried: the service is not bound, the window in front
+         * is no supported browser, its URL bar is not found or refused the tap, or
+         * Android gives accessibility services no Enter action (before Android 11).
+         * True only says the tap went out. The browser draws its editing field a
+         * moment later, so the address and the Enter follow on the main looper, and a
+         * caller checks what happened by reading the URL bar again
+         * ([readForegroundUrlBar]).
+         */
+        fun openInForegroundBrowser(address: String): Boolean =
+            instance?.openInActiveUrlBar(address) ?: false
+
+        private const val EDITING_FIELD_WAIT_MS = 150L
+        private const val EDITING_FIELD_MAX_ATTEMPTS = 5
+
+        /**
          * Reset all state for testing purposes.
          *
          * Public because the tests live in another source set, NOT because it is part
@@ -731,6 +751,57 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         } finally {
             recycleQuietly(root)
         }
+    }
+
+    /** Taps the URL bar of the window in front, then has [typeIntoEditingField] write [address]. */
+    private fun openInActiveUrlBar(address: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val root = rootInActiveWindow ?: return false
+        return try {
+            val urlBar = urlBarViewIds(root.packageName?.toString())
+                .firstNotNullOfOrNull { root.findAccessibilityNodeInfosByViewId(it)?.firstOrNull() }
+            val isTapped = urlBar?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+            if (isTapped) typeIntoEditingField(address, attempt = 0)
+            isTapped
+        } catch (e: Exception) {
+            Log.e(TAG, "openInActiveUrlBar failed: ${e.message}", e)
+            false
+        } finally {
+            recycleQuietly(root)
+        }
+    }
+
+    /**
+     * Writes [address] into the field that has input focus and presses Enter on it.
+     * The field is found by focus, not by id: Chrome edits its URL bar in place, while
+     * Firefox and Opera put another view in its place. Retried a few times, because
+     * that field appears only after the tap.
+     */
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun typeIntoEditingField(address: String, attempt: Int) {
+        Handler(Looper.getMainLooper()).postDelayed({
+            val root = rootInActiveWindow
+            val field = root?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            try {
+                when {
+                    field?.isEditable == true -> submitAddress(field, address)
+                    attempt + 1 < EDITING_FIELD_MAX_ATTEMPTS -> typeIntoEditingField(address, attempt + 1)
+                    else -> Log.w(TAG, "No editing field after a tap on the URL bar")
+                }
+            } finally {
+                field?.let(::recycleQuietly)
+                root?.let(::recycleQuietly)
+            }
+        }, EDITING_FIELD_WAIT_MS)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun submitAddress(field: AccessibilityNodeInfo, address: String) {
+        val text = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, address)
+        }
+        field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, text)
+        field.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
     }
 
     /**
