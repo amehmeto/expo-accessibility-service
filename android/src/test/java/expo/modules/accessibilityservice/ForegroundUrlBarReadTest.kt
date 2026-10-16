@@ -8,8 +8,11 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.kotlin.any
 import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.spy
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -87,6 +90,41 @@ class ForegroundUrlBarReadTest {
     }
 
     @Test
+    fun `reads no address while the URL bar shows its hint`() {
+        val root = windowOf(chrome, urlBar = hintNode())
+        doReturn(root).`when`(service).rootInActiveWindow
+
+        assertEquals(
+            AccessibilityService.ForegroundUrlBar(chrome, text = null, isEditing = false),
+            AccessibilityService.readForegroundUrlBar(),
+        )
+    }
+
+    @Test
+    fun `announces the address of the URL bar that changed`() {
+        val listener = mock<AccessibilityService.EventListener>()
+        AccessibilityService.addEventListener(listener)
+        val urlBar = urlBarNode("lemonde.fr", focused = false)
+        doReturn(windowOf(chrome, urlBar = urlBar)).`when`(service).rootInActiveWindow
+
+        service.onAccessibilityEvent(browserContentEvent(source = urlBar))
+
+        verify(listener).onUrlBarChanged(eq(chrome), eq("lemonde.fr"), any(), eq(false))
+    }
+
+    @Test
+    fun `announces nothing while the URL bar that changed shows its hint`() {
+        val listener = mock<AccessibilityService.EventListener>()
+        AccessibilityService.addEventListener(listener)
+        val urlBar = hintNode()
+        doReturn(windowOf(chrome, urlBar = urlBar)).`when`(service).rootInActiveWindow
+
+        service.onAccessibilityEvent(browserContentEvent(source = urlBar))
+
+        verify(listener, never()).onUrlBarChanged(any(), any(), any(), any())
+    }
+
+    @Test
     fun `keeps the browser identity when its toolbar is hidden`() {
         val root = windowOf(chrome, urlBars = emptyList())
         doReturn(root).`when`(service).rootInActiveWindow
@@ -118,6 +156,14 @@ class ForegroundUrlBarReadTest {
     private fun urlBarNode(text: String, focused: Boolean) = mock<AccessibilityNodeInfo> {
         on { this.text } doReturn text
         on { isFocused } doReturn focused
+        on { viewIdResourceName } doReturn chromeUrlBar
+    }
+
+    private fun hintNode() = mock<AccessibilityNodeInfo> {
+        on { text } doReturn "Search or type URL"
+        on { isShowingHintText } doReturn true
+        on { isFocused } doReturn false
+        on { viewIdResourceName } doReturn chromeUrlBar
     }
 
     private fun windowOf(browser: String, urlBar: AccessibilityNodeInfo) =
@@ -129,8 +175,9 @@ class ForegroundUrlBarReadTest {
             on { findAccessibilityNodeInfosByViewId(chromeUrlBar) } doReturn urlBars
         }
 
-    private fun browserContentEvent() = mock<AccessibilityEvent> {
+    private fun browserContentEvent(source: AccessibilityNodeInfo? = null) = mock<AccessibilityEvent> {
         on { eventType } doReturn AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         on { packageName } doReturn chrome
+        on { this.source } doReturn source
     }
 }
