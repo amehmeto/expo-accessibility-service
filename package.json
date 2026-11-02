@@ -32,7 +32,7 @@
   "homepage": "https://github.com/amehmeto/expo-accessibility-service#readme",
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
-      "npm run lint -- --fix"
+      "bun run lint --fix"
     ],
     "example/**/*.{ts,tsx}": [
       "prettier --write"
@@ -66,5 +66,6 @@
     "expo": "*",
     "react": "*",
     "react-native": "*"
-  }
+  },
+  "packageManager": "bun@1.4.4"
 }
