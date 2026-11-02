@@ -17,7 +17,7 @@ An Expo module for managing Android accessibility service permissions and monito
 ## Installation
 
 ```bash
-npm install expo-accessibility-service
+bun install expo-accessibility-service
 ```
 
 ### Configuration
@@ -363,14 +363,14 @@ The module expects a service named `{packageName}.MyAccessibilityService`. Make 
 ### Building the Module
 
 ```bash
-npm run build
+bun run build
 ```
 
 ### Running the Example
 
 ```bash
 cd example
-npx expo run:android
+bunx expo run:android
 ```
 
 ### Troubleshooting
@@ -381,8 +381,8 @@ If you encounter build errors like "Could not resolve project :react-native-edge
 
 ```bash
 cd example
-npx expo prebuild --clean --platform android
-npx expo run:android
+bunx expo prebuild --clean --platform android
+bunx expo run:android
 ```
 
 **Why this happens:**
@@ -396,7 +396,7 @@ npx expo run:android
 ### Testing
 
 ```bash
-npm test
+bun run test
 ```
 
 ## Contributing
