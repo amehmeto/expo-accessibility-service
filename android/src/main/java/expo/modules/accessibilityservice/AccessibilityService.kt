@@ -220,6 +220,9 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
          */
         private var blindSpotDetector = UrlBarBlindSpotDetector()
 
+        @VisibleForTesting
+        internal var eventThreads: AccessibilityEventThreads = BackgroundAccessibilityEventThreads
+
         // Thread-safe set of listeners (replaces single eventListener)
         private val eventListeners = Collections.synchronizedSet(mutableSetOf<EventListener>())
 
@@ -432,6 +435,7 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             isConnected = false
             instance = null
             blindSpotDetector = UrlBarBlindSpotDetector()
+            eventThreads = InlineAccessibilityEventThreads
         }
 
         @VisibleForTesting
@@ -609,26 +613,34 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
 
             Log.d(TAG, "App changed: package=$packageName, class=$className")
 
-            try {
-                if (Sentry.isEnabled()) {
-                    Sentry.addBreadcrumb(
-                        Breadcrumb().apply {
-                            category = "accessibility"
-                            message = "event received"
-                            setData("eventType", event.eventType)
-                            setData("receivedAtMillis", timestamp)
-                            setData("listenerCount", eventListeners.size)
-                            if (includePackageNamesInTelemetry) {
-                                setData("packageName", packageName)
-                            }
-                        }
-                    )
-                }
-            } catch (_: Throwable) {
-                // Sentry class may be absent at runtime (compileOnly, host app didn't bundle it)
+            val eventType = event.eventType
+            // Off the main thread: the first touch of Sentry initialises its classes.
+            eventThreads.offMain {
+                addEventBreadcrumb(eventType, timestamp, packageName)
             }
 
             notifyListeners(packageName, className, timestamp)
+        }
+    }
+
+    private fun addEventBreadcrumb(eventType: Int, timestamp: Long, packageName: String) {
+        try {
+            if (Sentry.isEnabled()) {
+                Sentry.addBreadcrumb(
+                    Breadcrumb().apply {
+                        category = "accessibility"
+                        message = "event received"
+                        setData("eventType", eventType)
+                        setData("receivedAtMillis", timestamp)
+                        setData("listenerCount", eventListeners.size)
+                        if (includePackageNamesInTelemetry) {
+                            setData("packageName", packageName)
+                        }
+                    }
+                )
+            }
+        } catch (_: Throwable) {
+            // Sentry class may be absent at runtime (compileOnly, host app didn't bundle it)
         }
     }
 
@@ -637,8 +649,25 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         val viewIds = urlBarViewIds(packageName)
         if (viewIds.isEmpty()) return
 
+        val threads = eventThreads
+        val keptEvent = threads.keep(event)
+        threads.offMain {
+            try {
+                val lookup = readChangedUrlBar(packageName, viewIds, keptEvent)
+                threads.onMain { publishUrlBarLookup(packageName, lookup) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Reading the URL bar failed: ${e.message}", e)
+            }
+        }
+    }
+
+    private fun readChangedUrlBar(
+        packageName: String,
+        viewIds: List<String>,
+        event: AccessibilityEvent,
+    ): UrlBarLookup {
         val source = event.source
-        val lookup = try {
+        return try {
             resolveUrlBarText(packageName, source?.viewIdResourceName, source?.let(::readShownText))
                 // The node that changed IS the URL bar, so its own focus state answers
                 // whether the user is typing in it. Read before the recycle below.
@@ -647,7 +676,9 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         } finally {
             source?.recycle()
         }
+    }
 
+    private fun publishUrlBarLookup(packageName: String, lookup: UrlBarLookup) {
         recordUrlBarLookup(packageName, lookup)
 
         val reading = (lookup as? UrlBarLookup.Read)?.reading
