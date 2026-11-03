@@ -1,3 +1,4 @@
+sh .husky/scripts/secrets-check.sh || exit 1
 bunx lint-staged
 
 # Kotlin complexity and unused code (detekt), then Kotlin clones (jscpd). Both
