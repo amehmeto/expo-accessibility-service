@@ -420,6 +420,26 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
         fun openInForegroundBrowser(address: String): Boolean =
             instance?.openInActiveUrlBar(address) ?: false
 
+        /**
+         * Whether the window in front belongs to one of [packageNames] and shows
+         * [text], outside the event flow.
+         *
+         * For a consumer that must tell apart screens an app hosts under one generic
+         * activity — Settings opens most of its pages as `SubSettings` — so the class
+         * name of [EventListener.onAppChanged] cannot say which page is up. The
+         * consumer asks a yes/no question about a text it names; it never receives the
+         * window's content, and no node outlives this call.
+         *
+         * Matched as Android's `findAccessibilityNodeInfosByText` does: a node whose
+         * text or content description contains [text], ignoring case. The tree of a
+         * window of another package is not read at all.
+         *
+         * False when the service is not bound, no window is in front, [text] is
+         * blank, or the tree cannot be read.
+         */
+        fun foregroundWindowShows(text: String, packageNames: Set<String>): Boolean =
+            instance?.activeWindowShows(text, packageNames) ?: false
+
         private const val EDITING_FIELD_WAIT_MS = 150L
         private const val EDITING_FIELD_MAX_ATTEMPTS = 5
 
@@ -780,6 +800,23 @@ class AccessibilityService : android.accessibilityservice.AccessibilityService()
             Log.e(TAG, "readForegroundUrlBar failed: ${e.message}", e)
             null
         } finally {
+            recycleQuietly(root)
+        }
+    }
+
+    private fun activeWindowShows(text: String, packageNames: Set<String>): Boolean {
+        if (text.isBlank()) return false
+        val root = rootInActiveWindow ?: return false
+        var matches: List<AccessibilityNodeInfo>? = null
+        return try {
+            if (root.packageName?.toString() !in packageNames) return false
+            matches = root.findAccessibilityNodeInfosByText(text)
+            !matches.isNullOrEmpty()
+        } catch (e: Exception) {
+            Log.e(TAG, "foregroundWindowShows failed: ${e.message}", e)
+            false
+        } finally {
+            matches?.forEach(::recycleQuietly)
             recycleQuietly(root)
         }
     }
